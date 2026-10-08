@@ -49,6 +49,7 @@ nav:
   - Home: index.md
   - Architecture:
       - architecture/index.md
+      - architecture/registry.md
   - Decisions (ADRs):
       - adr/index.md
       - adr/0001-python-uv-src-layout.md
@@ -56,6 +57,7 @@ nav:
       - adr/0003-git-workflow.md
       - adr/0004-docs-with-material-for-mkdocs.md
       - adr/0005-releases-with-release-please.md
+      - adr/0006-retirement-registry-format.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
