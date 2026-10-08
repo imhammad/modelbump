@@ -56,8 +56,14 @@ def check(
     status = model.status_on(date.today())
     if status is Status.RETIRED:
         line = f"RETIRED since {model.shutdown}"
+        if model.shutdown_is_earliest:
+            line += " (the earliest possible date the provider gave)"
+    elif model.shutdown_is_earliest:
+        line = f"{status.value.upper()}, shuts down no earlier than {model.shutdown}"
     else:
         line = f"{status.value.upper()}, shuts down on {model.shutdown}"
     typer.echo(f"{model_id} ({provider.value}): {line}.")
+    if model.superseded:
+        typer.echo(f"Rescheduled: {len(model.superseded)} earlier plan(s) were replaced.")
     if model.replacement:
         typer.echo(f"Suggested replacement: {model.replacement}")

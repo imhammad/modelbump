@@ -1,0 +1,102 @@
+# Copied from the source page. Scope: Gemini text models and embedding models
+# that have a shutdown date (see docs/architecture/registry.md).
+# The page gives no announcement dates, and says: "The shutdown dates listed in
+# the table indicate the earliest possible dates on which a model might be
+# retired." So every entry has `shutdown_is_earliest: true`.
+# `replacement` is what the page recommends TODAY (see ADR 0006).
+provider: google
+source_url: https://ai.google.dev/gemini-api/docs/deprecations
+retrieved: 2026-10-08
+models:
+  - id: gemini-3.1-flash-lite
+    shutdown: 2027-05-07
+    shutdown_is_earliest: true
+    replacement: gemini-3.5-flash-lite
+  - id: gemini-3-pro-preview
+    shutdown: 2026-03-09
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-pro-preview
+  - id: gemini-3.1-flash-lite-preview
+    shutdown: 2026-05-25
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-flash-lite
+  - id: gemini-2.5-computer-use-preview-10-2025
+    shutdown: 2026-07-28
+    shutdown_is_earliest: true
+    replacement: gemini-3.8-flash
+  - id: gemini-2.5-pro-preview-03-25
+    shutdown: 2025-12-02
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-pro-preview
+  - id: gemini-2.5-pro-preview-05-06
+    shutdown: 2025-12-02
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-pro-preview
+  - id: gemini-2.5-pro-preview-06-05
+    shutdown: 2025-12-02
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-pro-preview
+  - id: gemini-2.5-flash-lite-preview-09-2025
+    shutdown: 2026-03-31
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-flash-lite
+  - id: gemini-2.5-flash-preview-05-20
+    shutdown: 2025-11-18
+    shutdown_is_earliest: true
+    replacement: gemini-3.6-flash
+  - id: gemini-2.5-flash-preview-09-25
+    shutdown: 2026-02-17
+    shutdown_is_earliest: true
+    replacement: gemini-3.6-flash
+  - id: gemini-2.0-flash
+    shutdown: 2026-06-01
+    shutdown_is_earliest: true
+    replacement: gemini-3.6-flash
+  - id: gemini-2.0-flash-001
+    shutdown: 2026-06-01
+    shutdown_is_earliest: true
+    replacement: gemini-3.6-flash
+  - id: gemini-2.0-flash-lite
+    shutdown: 2026-06-01
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-flash-lite
+  - id: gemini-2.0-flash-lite-001
+    shutdown: 2026-06-01
+    shutdown_is_earliest: true
+    replacement: gemini-3.1-flash-lite
+  - id: gemini-2.0-flash-lite-preview
+    shutdown: 2025-12-09
+    shutdown_is_earliest: true
+    replacement: gemini-2.5-flash-lite
+  - id: gemini-2.0-flash-lite-preview-02-05
+    shutdown: 2025-12-09
+    shutdown_is_earliest: true
+    replacement: gemini-2.5-flash-lite
+  - id: gemini-embedding-001
+    shutdown: 2028-05-14
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: text-embedding-004
+    shutdown: 2026-01-14
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: embedding-2-preview
+    shutdown: 2026-08-10
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: embedding-001
+    shutdown: 2025-10-30
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: embedding-gecko-001
+    shutdown: 2025-10-30
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: gemini-embedding-exp
+    shutdown: 2025-10-30
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2
+  - id: gemini-embedding-exp-03-07
+    shutdown: 2025-10-30
+    shutdown_is_earliest: true
+    replacement: gemini-embedding-2

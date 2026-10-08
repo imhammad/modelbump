@@ -31,3 +31,16 @@ def test_check_unknown_model() -> None:
     result = runner.invoke(app, ["check", "not-a-real-model"])
     assert result.exit_code == 0
     assert "not in the registry" in result.stdout
+
+
+def test_check_rescheduled_model() -> None:
+    result = runner.invoke(app, ["check", "gpt-4-0314"])
+    assert result.exit_code == 0
+    assert "(openai): RETIRED since 2026-03-26." in result.stdout
+    assert "Rescheduled: 1 earlier plan(s) were replaced." in result.stdout
+
+
+def test_check_earliest_possible_date() -> None:
+    result = runner.invoke(app, ["check", "gemini-2.0-flash"])
+    assert result.exit_code == 0
+    assert "RETIRED since 2026-06-01 (the earliest possible date" in result.stdout

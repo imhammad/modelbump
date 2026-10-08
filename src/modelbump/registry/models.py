@@ -27,6 +27,16 @@ class Status(StrEnum):
     RETIRED = "retired"
 
 
+class EarlierPlan(BaseModel):
+    """A retirement plan the provider announced and later replaced."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    announced: date | None = None
+    shutdown: date
+    shutdown_is_earliest: bool = False
+
+
 class RetiredModel(BaseModel):
     """One model version that a provider has announced it will shut down."""
 
@@ -40,9 +50,16 @@ class RetiredModel(BaseModel):
         default=None, description="Day the provider announced the deprecation."
     )
     shutdown: date = Field(description="Day API calls to this model stop working.")
+    shutdown_is_earliest: bool = Field(
+        default=False,
+        description="True when the source only promises the shutdown no sooner than this day.",
+    )
     replacement: str | None = Field(
         default=None,
         description="Replacement the source page recommended on the day we retrieved it.",
+    )
+    superseded: tuple[EarlierPlan, ...] = Field(
+        default=(), description="Earlier retirement plans for this model, oldest first."
     )
     notes: str | None = None
 
@@ -55,6 +72,15 @@ class RetiredModel(BaseModel):
             raise ValueError(f"{self.id}: an alias repeats the id or another alias")
         if self.replacement in ids:
             raise ValueError(f"{self.id}: replacement cannot be the model itself")
+        for plan in self.superseded:
+            if (
+                plan.announced is not None
+                and self.announced is not None
+                and plan.announced >= self.announced
+            ):
+                raise ValueError(
+                    f"{self.id}: a superseded plan must be announced before the current one"
+                )
         return self
 
     def all_ids(self) -> tuple[str, ...]:
@@ -62,7 +88,7 @@ class RetiredModel(BaseModel):
         return (self.id, *self.aliases)
 
     def status_on(self, day: date) -> Status:
-        """Return the model's status on ``day``.
+        """Return the model's status on ``day``, using the current plan.
 
         A model is retired from its shutdown day onwards, and deprecated from
         the announcement day until then.

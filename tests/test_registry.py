@@ -149,3 +149,56 @@ def test_known_retirement_is_correct() -> None:
     assert provider is Provider.ANTHROPIC
     assert model.announced == date(2026, 2, 19)
     assert model.shutdown == date(2026, 4, 20)
+
+
+# ------------------------------------------------ rescheduled retirements
+
+
+def test_superseded_plan_must_be_older() -> None:
+    with pytest.raises(ValidationError, match="superseded"):
+        make_model(superseded=({"announced": date(2026, 2, 1), "shutdown": date(2026, 4, 1)},))
+
+
+def test_superseded_plan_is_kept() -> None:
+    model = make_model(superseded=({"announced": date(2025, 6, 1), "shutdown": date(2025, 9, 1)},))
+    assert model.superseded[0].shutdown == date(2025, 9, 1)
+    # The current plan decides the status, not the old one.
+    assert model.status_on(date(2025, 10, 1)) is Status.ACTIVE
+
+
+# ----------------------------------------- spot checks against the sources
+# Each value below was read by hand from the provider page on 2026-10-08.
+
+
+def test_openai_alias_resolves_to_snapshot() -> None:
+    found = load_registry().get("gpt-4")
+    assert found is not None
+    provider, model = found
+    assert provider is Provider.OPENAI
+    assert model.id == "gpt-4-0613"
+    assert model.shutdown == date(2026, 10, 23)
+
+
+def test_openai_rescheduled_retirement() -> None:
+    found = load_registry().get("gpt-4-1106-preview")
+    assert found is not None
+    _, model = found
+    assert model.announced == date(2026, 4, 22)
+    assert model.shutdown == date(2026, 10, 23)
+    assert [p.shutdown for p in model.superseded] == [date(2026, 3, 26)]
+
+
+def test_google_dates_are_earliest_possible() -> None:
+    found = load_registry().get("gemini-2.0-flash")
+    assert found is not None
+    provider, model = found
+    assert provider is Provider.GOOGLE
+    assert model.announced is None
+    assert model.shutdown == date(2026, 6, 1)
+    assert model.shutdown_is_earliest
+
+
+def test_every_google_entry_is_marked_earliest() -> None:
+    google = [m for p, m in load_registry() if p is Provider.GOOGLE]
+    assert google
+    assert all(m.shutdown_is_earliest for m in google)
