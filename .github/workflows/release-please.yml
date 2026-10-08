@@ -1,0 +1,23 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release PR / tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          # A fine-grained PAT, not GITHUB_TOKEN: PRs opened with GITHUB_TOKEN
+          # do not trigger CI, so the required checks would never run.
+          # See docs/engineering-challenges/001-release-pr-ci-never-runs.md
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
