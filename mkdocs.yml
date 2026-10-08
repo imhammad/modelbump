@@ -58,9 +58,11 @@ nav:
       - adr/0004-docs-with-material-for-mkdocs.md
       - adr/0005-releases-with-release-please.md
       - adr/0006-retirement-registry-format.md
+      - adr/0007-rescheduled-retirements.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
+      - engineering-challenges/002-one-model-two-shutdown-dates.md
   - Dev journal:
       - journal/index.md
       - journal/2026-10-07.md

@@ -1,0 +1,384 @@
+# Copied from the source page. Scope: models called through text-generation or
+# embedding APIs; audio, realtime, image, video, moderation and fine-tuning
+# entries are left out (see docs/architecture/registry.md).
+# `announced` is the date of the page section; `shutdown` is its shutdown date.
+# `replacement` is what the page recommends TODAY (see ADR 0006).
+# When a model appears in more than one section, the newest section is the
+# current plan and older ones go under `superseded` (see ADR 0007).
+provider: openai
+source_url: https://developers.openai.com/api/docs/deprecations
+retrieved: 2026-10-08
+models:
+  - id: gpt-5.3-codex
+    announced: 2026-10-01
+    shutdown: 2027-04-01
+    replacement: gpt-6-sol
+  - id: gpt-5.4-nano
+    announced: 2026-10-01
+    shutdown: 2027-04-01
+    replacement: gpt-6-luna
+  - id: gpt-5.1
+    announced: 2026-10-01
+    shutdown: 2027-04-01
+    replacement: gpt-6-sol
+  - id: gpt-5.4-cyber
+    announced: 2026-09-11
+    shutdown: 2026-10-01
+    notes: "Page recommends the most capable cyber model available to you."
+  - id: gpt-5-2025-08-07
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-sol
+  - id: gpt-5-mini-2025-08-07
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-terra
+  - id: gpt-5-nano-2025-08-07
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-luna
+  - id: gpt-5-pro-2025-10-06
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-sol
+    notes: "Replacement uses reasoning.mode pro."
+  - id: o3-2025-04-16
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-sol
+  - id: o3-pro-2025-06-10
+    announced: 2026-06-11
+    shutdown: 2026-12-11
+    replacement: gpt-5.6-sol
+    notes: "Replacement uses reasoning.mode pro."
+  - id: gpt-5.2-chat-latest
+    announced: 2026-05-08
+    shutdown: 2026-08-10
+    replacement: gpt-5.6-sol
+  - id: gpt-5.3-chat-latest
+    announced: 2026-05-08
+    shutdown: 2026-08-10
+    replacement: gpt-5.6-sol
+  - id: gpt-3.5-turbo-0125
+    aliases: [gpt-3.5-turbo]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-terra
+  - id: gpt-4-0613
+    aliases: [gpt-4, gpt-4-0613-completions, gpt-4-completions]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+  - id: gpt-4-1106-preview
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+    notes: "Rescheduled: first set to shut down on 2026-03-26."
+    superseded:
+      - announced: 2025-09-26
+        shutdown: 2026-03-26
+  - id: gpt-4-turbo-2024-04-09
+    aliases: [gpt-4-turbo, gpt-4-turbo-completions]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+  - id: gpt-4.1-nano-2025-04-14
+    aliases: [gpt-4.1-nano]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-luna
+  - id: gpt-4o-2024-05-13
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+  - id: o1-2024-12-17
+    aliases: [o1]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+  - id: o1-pro-2025-03-19
+    aliases: [o1-pro]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+    notes: "Replacement uses reasoning.mode pro."
+  - id: o3-mini-2025-01-31
+    aliases: [o3-mini]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-sol
+  - id: o4-mini-2025-04-16
+    aliases: [o4-mini]
+    announced: 2026-04-22
+    shutdown: 2026-10-23
+    replacement: gpt-5.6-terra
+  - id: computer-use-preview-2025-03-11
+    aliases: [computer-use-preview]
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-terra
+  - id: gpt-4o-mini-search-preview-2025-03-11
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-terra
+  - id: gpt-4o-search-preview-2025-03-11
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-terra
+  - id: gpt-5-chat-latest
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5-codex
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5.1-chat-latest
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5.1-codex
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5.1-codex-max
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5.1-codex-mini
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-terra
+  - id: o3-deep-research-2025-06-26
+    aliases: [o3-deep-research]
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: o4-mini-deep-research-2025-06-26
+    aliases: [o4-mini-deep-research]
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: gpt-5.2-codex
+    announced: 2026-04-22
+    shutdown: 2026-07-23
+    replacement: gpt-5.6-sol
+  - id: chatgpt-4o-latest
+    announced: 2025-11-18
+    shutdown: 2026-02-17
+    replacement: gpt-5.1-chat-latest
+  - id: codex-mini-latest
+    announced: 2025-11-17
+    shutdown: 2026-02-12
+    replacement: gpt-5-codex-mini
+  - id: gpt-3.5-turbo-instruct
+    announced: 2025-09-26
+    shutdown: 2026-09-28
+    replacement: gpt-5.6-terra
+  - id: babbage-002
+    announced: 2025-09-26
+    shutdown: 2026-09-28
+    replacement: gpt-5.6-terra
+  - id: davinci-002
+    announced: 2025-09-26
+    shutdown: 2026-09-28
+    replacement: gpt-5.6-terra
+  - id: gpt-3.5-turbo-1106
+    announced: 2025-09-26
+    shutdown: 2026-09-28
+    replacement: gpt-5.6-terra
+  - id: gpt-4-0314
+    announced: 2025-09-26
+    shutdown: 2026-03-26
+    replacement: gpt-5
+    notes: "Rescheduled: first announced on 2023-06-13 with shutdown at earliest 2024-06-13. Page recommends gpt-5 or gpt-4.1."
+    superseded:
+      - announced: 2023-06-13
+        shutdown: 2024-06-13
+        shutdown_is_earliest: true
+  - id: gpt-4-0125-preview
+    aliases: [gpt-4-turbo-preview, gpt-4-turbo-preview-completions]
+    announced: 2025-09-26
+    shutdown: 2026-03-26
+    replacement: gpt-5
+    notes: "Page recommends gpt-5 or gpt-4.1."
+  - id: o1-preview
+    announced: 2025-04-28
+    shutdown: 2025-07-28
+    replacement: o3
+  - id: o1-mini
+    announced: 2025-04-28
+    shutdown: 2025-10-27
+    replacement: o4-mini
+  - id: gpt-4.5-preview
+    announced: 2025-04-14
+    shutdown: 2025-07-14
+    replacement: gpt-4.1
+  - id: gpt-4-32k
+    announced: 2024-06-06
+    shutdown: 2025-06-06
+    replacement: gpt-4o
+  - id: gpt-4-32k-0613
+    announced: 2024-06-06
+    shutdown: 2025-06-06
+    replacement: gpt-4o
+  - id: gpt-4-32k-0314
+    announced: 2024-06-06
+    shutdown: 2025-06-06
+    replacement: gpt-4o
+    notes: "Also listed in the 2023-06-13 section with the same shutdown date."
+    superseded:
+      - announced: 2023-06-13
+        shutdown: 2025-06-06
+  - id: gpt-4-vision-preview
+    announced: 2024-06-06
+    shutdown: 2024-12-06
+    replacement: gpt-4o
+  - id: gpt-4-1106-vision-preview
+    announced: 2024-06-06
+    shutdown: 2024-12-06
+    replacement: gpt-4o
+  - id: gpt-3.5-turbo-0613
+    announced: 2023-11-06
+    shutdown: 2024-09-13
+    replacement: gpt-3.5-turbo
+  - id: gpt-3.5-turbo-16k-0613
+    announced: 2023-11-06
+    shutdown: 2024-09-13
+    replacement: gpt-3.5-turbo
+  - id: text-ada-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: text-babbage-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: text-curie-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: text-davinci-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: text-davinci-002
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: text-davinci-003
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+  - id: ada
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: babbage-002
+  - id: babbage
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: babbage-002
+  - id: curie
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: davinci-002
+  - id: davinci
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: davinci-002
+  - id: code-davinci-002
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-3.5-turbo-instruct
+    notes: "Rescheduled: the 2023-03-20 section lists a 2023-03-23 shutdown."
+    superseded:
+      - announced: 2023-03-20
+        shutdown: 2023-03-23
+  - id: text-davinci-edit-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-4o
+  - id: code-davinci-edit-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: gpt-4o
+  - id: text-similarity-ada-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-ada-doc-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-ada-query-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: code-search-ada-code-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: code-search-ada-text-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-similarity-babbage-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-babbage-doc-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-babbage-query-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: code-search-babbage-code-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: code-search-babbage-text-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-similarity-curie-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-curie-doc-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-curie-query-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-similarity-davinci-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-davinci-doc-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: text-search-davinci-query-001
+    announced: 2023-07-06
+    shutdown: 2024-01-04
+    replacement: text-embedding-3-small
+  - id: gpt-3.5-turbo-0301
+    announced: 2023-06-13
+    shutdown: 2024-09-13
+    replacement: gpt-3.5-turbo
+  - id: code-davinci-001
+    announced: 2023-03-20
+    shutdown: 2023-03-23
+    replacement: gpt-4o
+  - id: code-cushman-002
+    announced: 2023-03-20
+    shutdown: 2023-03-23
+    replacement: gpt-4o
+  - id: code-cushman-001
+    announced: 2023-03-20
+    shutdown: 2023-03-23
+    replacement: gpt-4o

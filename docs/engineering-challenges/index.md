@@ -34,3 +34,4 @@ What we'd do differently from now on.
 | # | Challenge | Area |
 |---|-----------|------|
 | [001](001-release-pr-ci-never-runs.md) | Release PRs would never pass CI | CI / releases |
+| [002](002-one-model-two-shutdown-dates.md) | One model, two shutdown dates | Registry data |

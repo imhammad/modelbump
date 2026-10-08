@@ -6,10 +6,17 @@ from modelbump.registry.loader import (
     load_provider_file,
     load_registry,
 )
-from modelbump.registry.models import Provider, ProviderFile, RetiredModel, Status
+from modelbump.registry.models import (
+    EarlierPlan,
+    Provider,
+    ProviderFile,
+    RetiredModel,
+    Status,
+)
 
 __all__ = [
     "DuplicateModelError",
+    "EarlierPlan",
     "Provider",
     "ProviderFile",
     "Registry",
