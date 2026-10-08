@@ -1,10 +1,12 @@
 """Command-line interface for ModelBump."""
 
+from datetime import date
 from typing import Annotated
 
 import typer
 
 from modelbump import __version__
+from modelbump.registry import Status, load_registry
 
 app = typer.Typer(
     name="modelbump",
@@ -39,3 +41,23 @@ def main(
 def scan(path: Annotated[str, typer.Argument(help="Repository to scan.")] = ".") -> None:
     """Find LLM model dependencies in a repository (coming in Phase 2)."""
     typer.echo(f"Scanning {path} ... not implemented yet.")
+
+
+@app.command()
+def check(
+    model_id: Annotated[str, typer.Argument(help="Model ID, e.g. claude-3-haiku-20240307.")],
+) -> None:
+    """Look up one model ID in the retirement registry."""
+    found = load_registry().get(model_id)
+    if found is None:
+        typer.echo(f"{model_id}: no retirement announced (not in the registry).")
+        return
+    provider, model = found
+    status = model.status_on(date.today())
+    if status is Status.RETIRED:
+        line = f"RETIRED since {model.shutdown}"
+    else:
+        line = f"{status.value.upper()}, shuts down on {model.shutdown}"
+    typer.echo(f"{model_id} ({provider.value}): {line}.")
+    if model.replacement:
+        typer.echo(f"Suggested replacement: {model.replacement}")
