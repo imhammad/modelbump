@@ -10,3 +10,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0002](0002-apache-2-license.md) | Apache License 2.0 | Accepted |
 | [0003](0003-git-workflow.md) | Branches, PRs, squash merges, Conventional Commits | Accepted |
 | [0004](0004-docs-with-material-for-mkdocs.md) | Docs with Material for MkDocs, with a path to Zensical | Accepted |
+| [0005](0005-releases-with-release-please.md) | Versioning and releases with release-please | Accepted |

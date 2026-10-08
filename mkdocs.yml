@@ -55,8 +55,10 @@ nav:
       - adr/0002-apache-2-license.md
       - adr/0003-git-workflow.md
       - adr/0004-docs-with-material-for-mkdocs.md
+      - adr/0005-releases-with-release-please.md
   - Engineering challenges:
       - engineering-challenges/index.md
+      - engineering-challenges/001-release-pr-ci-never-runs.md
   - Dev journal:
       - journal/index.md
       - journal/2026-10-07.md
