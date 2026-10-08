@@ -39,3 +39,7 @@ A second problem appeared while testing the version bump locally: changing only 
 ## Lesson
 
 Branch protection and automation interact: any bot that opens PRs needs a token whose events trigger CI. And when a version number lives in more than one file, every copy must be bumped together, or one strict check will catch the mismatch.
+
+## Follow-up (2026-10-08)
+
+The first live run worked (the bot's PR triggered CI), but revealed a third issue: release-please's default tag format includes the package name (`modelbump-v0.0.1`), so it didn't recognise our existing `v0.0.1` tag and treated all history as unreleased. Fixed by setting `"include-component-in-tag": false`. Lesson: test automation against real state, not just the happy path.
