@@ -23,3 +23,6 @@ htmlcov/
 
 # MkDocs build output
 site/
+
+# Mined research data (published separately with a dataset card)
+research/data/
