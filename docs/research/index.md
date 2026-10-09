@@ -11,6 +11,10 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 | RQ3 | How effective are automated regression-suite synthesis and prompt repair at restoring behaviour after a migration? |
 | RQ4 | Is the end-to-end output useful to developers? |
 
+## Protocols
+
+- [Mining candidate migration commits](mining.md)
+
 ## Key prior work
 
 - H. L. Kim. *When the Model Retires: An Empirical Study of LLM Migration in Open-Source Applications.* arXiv:2609.31288, 2026. [arXiv](https://arxiv.org/abs/2609.31288)

@@ -13,3 +13,5 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0005](0005-releases-with-release-please.md) | Versioning and releases with release-please | Accepted |
 | [0006](0006-retirement-registry-format.md) | Retirement registry as YAML + pydantic schema | Accepted |
 | [0007](0007-rescheduled-retirements.md) | Keep rescheduled retirements as superseded plans | Accepted |
+| [0008](0008-research-code-separate-from-product.md) | Research code lives in `research/`, separate from the product | Accepted |
+| [0009](0009-mining-method.md) | Mine with one search per model ID and split windows at the cap | Accepted |

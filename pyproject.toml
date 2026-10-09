@@ -33,6 +33,13 @@ dev = [
     "ruff>=0.16.10",
     "types-pyyaml>=6.0.12.20260906",
 ]
+research = [
+    "httpx>=0.28.1",
+]
+
+[tool.uv]
+# `uv sync` installs the research tools too, locally and in CI.
+default-groups = ["dev", "research"]
 
 [tool.ruff]
 line-length = 100
@@ -44,8 +51,9 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["src", "tests"]
+files = ["src", "tests", "research"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=modelbump --cov-report=term-missing"
+pythonpath = ["."]
+addopts = "-ra --strict-markers --cov=modelbump --cov=research --cov-report=term-missing"
