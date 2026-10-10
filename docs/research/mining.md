@@ -32,7 +32,9 @@ uv run python -m research.mining.miner --only claude-3-haiku-20240307
 uv run python -m research.mining.miner --end 2026-10-08
 ```
 
-The second command searches every ID. A fixed `--end` date keeps the search the same if you rerun it, which matters for reproducibility. If it stops, run the same command again: cached searches are not repeated.
+The second command searches every ID, one search every 6 seconds (change it with `--interval`). That is slower than GitHub's 30 searches a minute on purpose: a long run at full speed trips GitHub's secondary rate limit, and after that GitHub refuses searches for a long time. When it does refuse, the miner waits 1, 2, 4, 8 minutes and so on. If it still cannot continue, it stops cleanly, and you rerun the same command later.
+
+A fixed `--end` date keeps the search the same if you rerun it, which matters for reproducibility. If it stops, run the same command again: cached searches are not repeated.
 
 ## Differences from Kim (2026)
 

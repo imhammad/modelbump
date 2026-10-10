@@ -25,7 +25,12 @@ from pathlib import Path
 from typing import Any
 
 from modelbump.registry import Registry, load_registry
-from research.mining.github_search import MAX_RESULTS, PER_PAGE, CommitSearchClient
+from research.mining.github_search import (
+    MAX_RESULTS,
+    PER_PAGE,
+    CommitSearchClient,
+    RateLimitError,
+)
 
 # IDs that are ordinary English words or too short: searching them would
 # return mostly unrelated commits. Their dated snapshots are still searched.
@@ -195,6 +200,9 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     parser.add_argument("--only", action="append", default=[], help="Search only this ID.")
     parser.add_argument("--out", type=Path, default=Path("research/data/candidates.jsonl"))
     parser.add_argument("--cache", type=Path, default=Path("research/data/cache"))
+    parser.add_argument(
+        "--interval", type=float, default=6.0, help="Seconds between searches (default 6)."
+    )
     args = parser.parse_args(argv)
 
     if client is None:
@@ -202,15 +210,26 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
         if not token:
             print("Set GITHUB_TOKEN first:  export GITHUB_TOKEN=$(gh auth token)", file=sys.stderr)
             return 1
-        client = CommitSearchClient(args.cache, token)
+        client = CommitSearchClient(args.cache, token, min_interval=args.interval)
 
     targets = model_ids_to_search(load_registry(), args.only)
-    candidates, stats = mine(
-        client,
-        targets,
-        Window(args.start, args.end),
-        progress=lambda line: print(line, file=sys.stderr),
-    )
+    try:
+        candidates, stats = mine(
+            client,
+            targets,
+            Window(args.start, args.end),
+            progress=lambda line: print(line, file=sys.stderr),
+        )
+    except RateLimitError:
+        print(
+            "GitHub is still refusing searches. Everything fetched so far is saved in the "
+            "cache. Wait an hour or more, then run the same command to continue.",
+            file=sys.stderr,
+        )
+        return 2
+    except KeyboardInterrupt:
+        print("Stopped. Run the same command to continue from the cache.", file=sys.stderr)
+        return 130
     write_jsonl(candidates, args.out)
     stats_path = args.out.with_suffix(".stats.json")
     stats_path.write_text(json.dumps(asdict(stats), indent=2) + "\n", encoding="utf-8")

@@ -5,7 +5,9 @@ It does three things a research miner needs:
 - caches every raw response on disk, so a run can stop and resume, and every
   number in the paper can be traced back to the exact response it came from;
 - waits when GitHub says the rate limit is reached, as GitHub's docs ask;
-- spaces requests out to stay under 30 search requests per minute.
+- spaces requests out (one every 6 seconds by default). GitHub allows 30
+  searches a minute, but a long run at that pace trips its "secondary"
+  rate limit, which then refuses searches for a long time.
 """
 
 import hashlib
@@ -41,8 +43,8 @@ class CommitSearchClient:
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.time,
-        min_interval: float = 2.1,
-        max_retries: int = 5,
+        min_interval: float = 6.0,
+        max_retries: int = 6,
     ) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -98,9 +100,10 @@ class CommitSearchClient:
             self.requests_made += 1
             if _is_rate_limited(response):
                 wait = _wait_seconds(response, attempt, self._clock())
+                reason = _message(response).split(". ")[0]
                 print(
-                    f"GitHub refused the search ({response.status_code}: {_message(response)}); "
-                    f"waiting {wait:.0f}s ...",
+                    f"GitHub refused the search ({response.status_code}: {reason}); "
+                    f"waiting {wait / 60:.0f} min ...",
                     file=sys.stderr,
                 )
                 self._sleep(wait)
@@ -141,11 +144,18 @@ def _message(response: httpx.Response) -> str:
 
 
 def _wait_seconds(response: httpx.Response, attempt: int, now: float) -> float:
-    """How long to wait after a 403/429, following GitHub's rate-limit docs."""
-    retry_after = response.headers.get("retry-after")
-    if retry_after is not None:
-        return float(retry_after)
+    """How long to wait after a 403/429, following GitHub's rate-limit docs.
+
+    For the normal limit, wait until the reset time GitHub gives. For the
+    secondary limit, wait at least what GitHub asks, and double the wait on
+    every refusal in a row (1, 2, 4, 8, ... minutes): retrying every minute
+    keeps the limit active.
+    """
     reset = response.headers.get("x-ratelimit-reset")
     if response.headers.get("x-ratelimit-remaining") == "0" and reset is not None:
         return max(float(reset) - now, 0.0) + 1.0
-    return 60.0 * 2.0**attempt
+    backoff = 60.0 * 2.0**attempt
+    retry_after = response.headers.get("retry-after")
+    if retry_after is not None:
+        return max(float(retry_after), backoff)
+    return backoff

@@ -4,6 +4,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 
 from modelbump.registry import load_registry
@@ -171,3 +172,30 @@ def test_main_needs_a_token(
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     assert main(["--only", "claude-2.1"]) == 1
     assert "GITHUB_TOKEN" in capsys.readouterr().err
+
+
+def test_main_stops_cleanly_when_github_keeps_refusing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    refusing = CommitSearchClient(
+        tmp_path / "cache",
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(403, json={"message": "secondary rate limit"})
+        ),
+        sleep=lambda _: None,
+        min_interval=0,
+        max_retries=1,
+    )
+    assert main(["--only", "claude-2.1"], client=refusing) == 2
+    assert "run the same command to continue" in capsys.readouterr().err
+
+
+def test_main_handles_ctrl_c(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def interrupt(_: httpx.Request) -> httpx.Response:
+        raise KeyboardInterrupt
+
+    client = CommitSearchClient(
+        tmp_path / "cache", transport=httpx.MockTransport(interrupt), min_interval=0
+    )
+    assert main(["--only", "claude-2.1"], client=client) == 130
+    assert "Stopped" in capsys.readouterr().err

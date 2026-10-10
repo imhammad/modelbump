@@ -75,15 +75,28 @@ def test_requests_are_spaced_out(tmp_path: Path, fake: FakeGitHub) -> None:
     client = make_client(tmp_path, fake, clock)
     client.search(QUERY, 1)
     client.search(QUERY, 2)
-    assert clock.sleeps == [pytest.approx(2.1)]
+    assert clock.sleeps == [pytest.approx(6.0)]
 
 
 def test_waits_for_retry_after(tmp_path: Path, fake: FakeGitHub) -> None:
-    fake.refusals.append(httpx.Response(429, headers={"retry-after": "30"}))
+    fake.refusals.append(httpx.Response(429, headers={"retry-after": "300"}))
     clock = FakeClock()
     result = make_client(tmp_path, fake, clock).search(QUERY)
     assert result["total_count"] == 1
-    assert 30.0 in clock.sleeps
+    assert 300.0 in clock.sleeps
+
+
+def test_repeated_refusals_wait_longer_each_time(tmp_path: Path, fake: FakeGitHub) -> None:
+    # Real case: GitHub said "retry-after: 60" every time, and retrying every
+    # minute kept the secondary limit active for over half an hour.
+    fake.refusals += [
+        httpx.Response(403, headers={"retry-after": "60"}, json={"message": "secondary rate limit"})
+        for _ in range(3)
+    ]
+    clock = FakeClock()
+    make_client(tmp_path, fake, clock).search(QUERY)
+    waits = [s for s in clock.sleeps if s >= 60]
+    assert waits == [60.0, 120.0, 240.0]
 
 
 def test_waits_until_rate_limit_reset(tmp_path: Path, fake: FakeGitHub) -> None:
@@ -147,4 +160,6 @@ def test_wait_message_shows_github_reason(
 ) -> None:
     fake.refusals.append(secondary_limit())
     make_client(tmp_path, fake, FakeClock()).search(QUERY)
-    assert "403: You have exceeded a secondary rate limit." in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "403: You have exceeded a secondary rate limit" in err
+    assert "waiting 1 min" in err
