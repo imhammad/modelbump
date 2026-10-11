@@ -5,6 +5,7 @@ It does three things a research miner needs:
 - caches every raw response on disk, so a run can stop and resume, and every
   number in the paper can be traced back to the exact response it came from;
 - waits when GitHub says the rate limit is reached, as GitHub's docs ask;
+- waits and retries when the network drops (Wi-Fi off, a laptop that slept);
 - spaces requests out (one every 6 seconds by default). GitHub allows 30
   searches a minute, but a long run at that pace trips its "secondary"
   rate limit, which then refuses searches for a long time.
@@ -30,6 +31,10 @@ MAX_RESULTS = 1000  # GitHub returns at most 1,000 results for any one search.
 
 class RateLimitError(RuntimeError):
     """Raised when GitHub keeps refusing requests after every retry."""
+
+
+class NetworkError(RuntimeError):
+    """Raised when the network keeps failing after every retry."""
 
 
 class CommitSearchClient:
@@ -94,9 +99,22 @@ class CommitSearchClient:
             "sort": "committer-date",
             "order": "asc",
         }
+        network_failed = False
         for attempt in range(self._max_retries + 1):
             self._throttle()
-            response = self._http.get(SEARCH_URL, params=params)
+            try:
+                response = self._http.get(SEARCH_URL, params=params)
+            except httpx.TransportError as error:
+                # No answer at all: no internet, a dropped Wi-Fi, a timeout.
+                network_failed = True
+                wait = 60.0 * 2.0**attempt
+                print(
+                    f"Network problem ({type(error).__name__}); waiting {wait / 60:.0f} min ...",
+                    file=sys.stderr,
+                )
+                self._sleep(wait)
+                continue
+            network_failed = False
             self.requests_made += 1
             if _is_rate_limited(response):
                 wait = _wait_seconds(response, attempt, self._clock())
@@ -111,6 +129,8 @@ class CommitSearchClient:
             response.raise_for_status()
             data: dict[str, Any] = response.json()
             return data
+        if network_failed:
+            raise NetworkError(f"The network kept failing for {query!r} (page {page})")
         raise RateLimitError(f"GitHub kept refusing the search for {query!r} (page {page})")
 
     def _throttle(self) -> None:

@@ -7,7 +7,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from research.mining.github_search import USER_AGENT, CommitSearchClient, RateLimitError
+from research.mining.github_search import (
+    USER_AGENT,
+    CommitSearchClient,
+    NetworkError,
+    RateLimitError,
+)
 from tests.research.fake_github import FakeGitHub, make_item
 
 QUERY = '"model-a" committer-date:2026-01-01..2026-01-31'
@@ -163,3 +168,22 @@ def test_wait_message_shows_github_reason(
     err = capsys.readouterr().err
     assert "403: You have exceeded a secondary rate limit" in err
     assert "waiting 1 min" in err
+
+
+def test_network_errors_are_retried(
+    tmp_path: Path, fake: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Real case: the Wi-Fi dropped overnight and the run crashed with
+    # "nodename nor servname provided". Now it waits and tries again.
+    fake.network_errors = 2
+    clock = FakeClock()
+    result = make_client(tmp_path, fake, clock).search(QUERY)
+    assert result["total_count"] == 1
+    assert [s for s in clock.sleeps if s >= 60] == [60.0, 120.0]
+    assert "Network problem (ConnectError); waiting 1 min" in capsys.readouterr().err
+
+
+def test_gives_up_when_the_network_stays_down(tmp_path: Path, fake: FakeGitHub) -> None:
+    fake.network_errors = 10
+    with pytest.raises(NetworkError):
+        make_client(tmp_path, fake, FakeClock()).search(QUERY)

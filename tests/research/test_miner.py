@@ -10,10 +10,12 @@ import pytest
 from modelbump.registry import load_registry
 from research.mining.github_search import CommitSearchClient
 from research.mining.miner import (
+    MIGRATION_TERMS,
     SKIPPED_IDS,
     MiningStats,
     Window,
     build_query,
+    count_results,
     main,
     mentions,
     mine,
@@ -40,6 +42,11 @@ def test_window_split_covers_every_day_once() -> None:
 
 def test_build_query_quotes_the_id() -> None:
     assert build_query("gpt-4", JANUARY) == '"gpt-4" committer-date:2026-01-01..2026-01-31'
+
+
+def test_build_query_with_a_migration_word() -> None:
+    query = build_query("gpt-4", JANUARY, '"shut down"')
+    assert query == '"gpt-4" "shut down" committer-date:2026-01-01..2026-01-31'
 
 
 def test_reads_every_page(tmp_path: Path) -> None:
@@ -129,7 +136,12 @@ def test_mine_skips_forks_and_merges_duplicates(tmp_path: Path) -> None:
     targets = [("openai", "model-a"), ("anthropic", "model-b")]
     lines: list[str] = []
     candidates, stats = mine(make_client(tmp_path, fake), targets, JANUARY, lines.append)
-    assert lines == ["[1/2] model-a", "[2/2] model-b"]
+    assert lines == [
+        "[1/2] model-a",
+        "    2026-01-01..2026-01-31: 2 results",
+        "[2/2] model-b",
+        "    2026-01-01..2026-01-31: 2 results",
+    ]
     assert [c.sha for c in candidates] == ["b1", "both"]  # sorted by date
     assert candidates[1].matched_ids == ["model-a", "model-b"]
     assert candidates[1].providers == ["openai", "anthropic"]
@@ -199,3 +211,82 @@ def test_main_handles_ctrl_c(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     )
     assert main(["--only", "claude-2.1"], client=client) == 130
     assert "Stopped" in capsys.readouterr().err
+
+
+def test_cached_windows_replay_silently(tmp_path: Path) -> None:
+    fake = FakeGitHub([("model-a", make_item("a1", "model-a", date(2026, 1, 4)))])
+    client = make_client(tmp_path, fake)
+    first: list[str] = []
+    mine(client, [("openai", "model-a")], JANUARY, first.append)
+    again: list[str] = []
+    mine(client, [("openai", "model-a")], JANUARY, again.append)
+    assert len(first) == 2
+    assert again == ["[1/1] model-a"]
+
+
+def test_huge_ids_are_searched_with_migration_words(tmp_path: Path) -> None:
+    fake = FakeGitHub(
+        [
+            ("model-a", make_item("m1", "model-a", date(2026, 1, 2))),  # "Migrate from"
+            ("model-a", make_item("r1", "x", date(2026, 1, 3), message="Replace model-a")),
+            ("model-a", make_item("u1", "x", date(2026, 1, 4), message="Use model-a for chat")),
+        ]
+    )
+    lines: list[str] = []
+    candidates, stats = mine(
+        make_client(tmp_path, fake), [("openai", "model-a")], JANUARY, lines.append, focus_above=2
+    )
+    assert [c.sha for c in candidates] == ["m1", "r1"]
+    assert stats.focused_ids == ["model-a"]
+    assert stats.model_totals == {"model-a": 3}
+    assert "    3 results: too many, searching with migration words" in lines
+    # One count search, then one search per migration word.
+    assert len(fake.calls) == 1 + len(MIGRATION_TERMS)
+    assert stats.queries == 1 + len(MIGRATION_TERMS)
+
+
+def test_small_ids_reuse_the_first_search(tmp_path: Path) -> None:
+    fake = FakeGitHub([("model-a", make_item("a1", "model-a", date(2026, 1, 4)))])
+    _, stats = mine(make_client(tmp_path, fake), [("openai", "model-a")], JANUARY)
+    assert len(fake.calls) == 1
+    assert stats.queries == 1
+    assert stats.focused_ids == []
+
+
+def test_count_results(tmp_path: Path) -> None:
+    fake = FakeGitHub(
+        [("model-a", make_item(f"a{i}", "model-a", date(2026, 1, 4))) for i in range(3)]
+    )
+    counts = count_results(make_client(tmp_path, fake), [("openai", "model-a")], JANUARY)
+    assert counts == {"model-a": 3}
+
+
+def test_main_counts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fake = FakeGitHub(
+        [("claude-2.1", make_item(f"c{i}", "claude-2.1", date(2025, 3, 1))) for i in range(3)]
+    )
+    out = tmp_path / "candidates.jsonl"
+    argv = ["--only", "claude-2.1", "--counts", "--focus-above", "2", "--out", str(out)]
+    assert main(argv, client=make_client(tmp_path, fake)) == 0
+    assert json.loads((tmp_path / "counts.json").read_text()) == {"claude-2.1": 3}
+    assert not out.exists()
+    printed = capsys.readouterr().out
+    assert "3  migration words  claude-2.1" in printed
+    assert "IDs searched with migration words: 1 of 1" in printed
+
+
+def test_main_stops_cleanly_when_the_network_is_down(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def offline(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("nodename nor servname provided", request=request)
+
+    client = CommitSearchClient(
+        tmp_path / "cache",
+        transport=httpx.MockTransport(offline),
+        sleep=lambda _: None,
+        min_interval=0,
+        max_retries=1,
+    )
+    assert main(["--only", "claude-2.1"], client=client) == 3
+    assert "Check your internet connection" in capsys.readouterr().err

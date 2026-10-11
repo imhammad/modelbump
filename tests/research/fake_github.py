@@ -6,18 +6,26 @@ from typing import Any
 
 import httpx
 
-QUERY = re.compile(r'^"(?P<id>[^"]+)" committer-date:(?P<start>[\d-]+)\.\.(?P<end>[\d-]+)$')
+QUERY = re.compile(
+    r'^"(?P<id>[^"]+)"(?: (?P<term>.+?))? committer-date:(?P<start>[\d-]+)\.\.(?P<end>[\d-]+)$'
+)
 
 
 def make_item(
-    sha: str, model_id: str, day: date, *, fork: bool = False, repo: str = "acme/app"
+    sha: str,
+    model_id: str,
+    day: date,
+    *,
+    fork: bool = False,
+    repo: str = "acme/app",
+    message: str | None = None,
 ) -> dict[str, Any]:
     return {
         "sha": sha,
         "html_url": f"https://github.com/{repo}/commit/{sha}",
         "repository": {"full_name": repo, "fork": fork},
         "commit": {
-            "message": f"Migrate from {model_id}",
+            "message": message or f"Migrate from {model_id}",
             "committer": {"date": f"{day.isoformat()}T12:00:00Z"},
         },
     }
@@ -30,8 +38,12 @@ class FakeGitHub:
         self.commits = commits
         self.calls: list[tuple[str, int]] = []
         self.refusals: list[httpx.Response] = []
+        self.network_errors = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
+        if self.network_errors:
+            self.network_errors -= 1
+            raise httpx.ConnectError("nodename nor servname provided", request=request)
         if self.refusals:
             return self.refusals.pop(0)
         q = request.url.params["q"]
@@ -41,10 +53,12 @@ class FakeGitHub:
         m = QUERY.match(q)
         assert m, f"unexpected query {q!r}"
         start, end = date.fromisoformat(m["start"]), date.fromisoformat(m["end"])
+        term = (m["term"] or "").strip('"').lower()
         hits = [
             item
             for model_id, item in self.commits
             if model_id == m["id"]
+            and term in item["commit"]["message"].lower()
             and start <= date.fromisoformat(item["commit"]["committer"]["date"][:10]) <= end
         ]
         hits.sort(key=lambda i: i["commit"]["committer"]["date"])

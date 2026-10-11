@@ -36,3 +36,4 @@ What we'd do differently from now on.
 | [001](001-release-pr-ci-never-runs.md) | Release PRs would never pass CI | CI / releases |
 | [002](002-one-model-two-shutdown-dates.md) | One model, two shutdown dates | Registry data |
 | [003](003-fuzzy-commit-search.md) | GitHub's commit search is fuzzy | Research mining |
+| [004](004-popular-ids-take-days.md) | Popular model IDs would take days to mine | Research mining |

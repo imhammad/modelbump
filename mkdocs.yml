@@ -61,11 +61,13 @@ nav:
       - adr/0007-rescheduled-retirements.md
       - adr/0008-research-code-separate-from-product.md
       - adr/0009-mining-method.md
+      - adr/0010-hybrid-search-for-huge-ids.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
       - engineering-challenges/002-one-model-two-shutdown-dates.md
       - engineering-challenges/003-fuzzy-commit-search.md
+      - engineering-challenges/004-popular-ids-take-days.md
   - Dev journal:
       - journal/index.md
       - journal/2026-10-07.md

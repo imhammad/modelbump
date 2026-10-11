@@ -8,9 +8,16 @@ by SHA: the same commit often lives in many repositories (copies, mirrors,
 templates), and we keep it once while recording every repository. Deciding
 which candidates are real migrations is a separate step.
 
+Some IDs (gpt-4, gpt-4o, gpt-3.5-turbo ...) are mentioned in so many commits
+that reading all of them would take days. For an ID with more than
+``--focus-above`` results (50,000 by default) we instead search the ID together
+with each migration word (migrate, replace, switch ...), as Kim (2026) did for
+every ID. See ADR 0010.
+
 Run from the repo root:
     export GITHUB_TOKEN=$(gh auth token)
     uv run python -m research.mining.miner --only claude-3-haiku-20240307
+    uv run python -m research.mining.miner --counts   # only count results per ID
 """
 
 import argparse
@@ -29,12 +36,35 @@ from research.mining.github_search import (
     MAX_RESULTS,
     PER_PAGE,
     CommitSearchClient,
+    NetworkError,
     RateLimitError,
 )
 
 # IDs that are ordinary English words or too short: searching them would
 # return mostly unrelated commits. Their dated snapshots are still searched.
 SKIPPED_IDS = frozenset({"ada", "babbage", "curie", "davinci", "o1"})
+
+# An ID with more results than this is searched together with migration words
+# instead of on its own (ADR 0010).
+FOCUS_ABOVE = 50_000
+
+# The migration words of Kim (2026, Section 3), one search per word.
+MIGRATION_TERMS = (
+    "migrate",
+    "replace",
+    "switch",
+    "upgrade",
+    "update",
+    "remove",
+    "drop",
+    "swap",
+    "retire",
+    "deprecate",
+    "sunset",
+    '"shut down"',
+)
+
+Progress = Callable[[str], None]
 
 
 def mentions(message: str, model_id: str) -> bool:
@@ -95,25 +125,43 @@ class MiningStats:
     not_in_message: int = 0
     duplicates: int = 0
     copies_in_other_repos: int = 0
+    focus_above: int = FOCUS_ABOVE
+    model_totals: dict[str, int] = field(default_factory=dict)
+    focused_ids: list[str] = field(default_factory=list)
     truncated_windows: list[str] = field(default_factory=list)
 
 
-def build_query(model_id: str, window: Window) -> str:
-    """Search for the exact model ID in commit messages, inside one window."""
-    return f'"{model_id}" {window.qualifier()}'
+def build_query(model_id: str, window: Window, term: str = "") -> str:
+    """Search for the exact model ID (and a migration word, if given) in one window."""
+    parts = [f'"{model_id}"', term, window.qualifier()]
+    return " ".join(part for part in parts if part)
 
 
 def search_window(
-    client: CommitSearchClient, model_id: str, window: Window, stats: MiningStats
+    client: CommitSearchClient,
+    model_id: str,
+    window: Window,
+    stats: MiningStats,
+    term: str = "",
+    progress: Progress | None = None,
+    first: dict[str, Any] | None = None,
+    requests_before: int | None = None,
 ) -> Iterator[dict[str, Any]]:
-    """Yield every result for ``model_id`` in ``window``, splitting when needed."""
-    query = build_query(model_id, window)
-    first = client.search(query, 1)
-    stats.queries += 1
+    """Yield every result for ``model_id`` in ``window``, splitting when needed.
+
+    ``first`` is page 1 of this exact search, when the caller already has it,
+    and ``requests_before`` is the client's request count before it was fetched.
+    """
+    query = build_query(model_id, window, term)
+    if requests_before is None:
+        requests_before = client.requests_made
+    if first is None:
+        first = client.search(query, 1)
+        stats.queries += 1
     total = int(first["total_count"])
     if total > MAX_RESULTS and window.can_split():
         for half in window.split():
-            yield from search_window(client, model_id, half, stats)
+            yield from search_window(client, model_id, half, stats, term, progress)
         return
     if total > MAX_RESULTS:
         # A single day with more than 1,000 results: we can only see the first 1,000.
@@ -123,6 +171,10 @@ def search_window(
     for page in range(2, pages + 1):
         stats.queries += 1
         yield from client.search(query, page)["items"]
+    if progress is not None and client.requests_made > requests_before:
+        # Only windows that needed GitHub are shown; cached ones replay silently.
+        label = f"{term} " if term else ""
+        progress(f"    {label}{window.start}..{window.end}: {total:,} results")
 
 
 def model_ids_to_search(registry: Registry, only: Sequence[str] = ()) -> list[tuple[str, str]]:
@@ -136,20 +188,48 @@ def model_ids_to_search(registry: Registry, only: Sequence[str] = ()) -> list[tu
     return pairs
 
 
+def search_model(
+    client: CommitSearchClient,
+    model_id: str,
+    window: Window,
+    stats: MiningStats,
+    progress: Progress | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield the results for one ID: all of them, or only migration-word ones if huge."""
+    requests_before = client.requests_made
+    first = client.search(build_query(model_id, window), 1)
+    stats.queries += 1
+    total = int(first["total_count"])
+    stats.model_totals[model_id] = total
+    if total <= stats.focus_above:
+        yield from search_window(
+            client, model_id, window, stats, "", progress, first, requests_before
+        )
+        return
+    stats.focused_ids.append(model_id)
+    if progress is not None:
+        progress(f"    {total:,} results: too many, searching with migration words")
+    for term in MIGRATION_TERMS:
+        yield from search_window(client, model_id, window, stats, term, progress)
+
+
 def mine(
     client: CommitSearchClient,
     targets: Sequence[tuple[str, str]],
     window: Window,
-    progress: Callable[[str], None] | None = None,
+    progress: Progress | None = None,
+    focus_above: int = FOCUS_ABOVE,
 ) -> tuple[list[Candidate], MiningStats]:
     """Search every target ID and return de-duplicated, non-fork candidates."""
-    stats = MiningStats(start=window.start.isoformat(), end=window.end.isoformat())
+    stats = MiningStats(
+        start=window.start.isoformat(), end=window.end.isoformat(), focus_above=focus_above
+    )
     by_sha: dict[str, Candidate] = {}
     for number, (provider, model_id) in enumerate(targets, start=1):
         stats.model_ids += 1
         if progress is not None:
             progress(f"[{number}/{len(targets)}] {model_id}")
-        for item in search_window(client, model_id, window, stats):
+        for item in search_model(client, model_id, window, stats, progress):
             stats.items_seen += 1
             if item["repository"]["fork"]:
                 stats.forks_skipped += 1
@@ -184,6 +264,21 @@ def mine(
     return candidates, stats
 
 
+def count_results(
+    client: CommitSearchClient,
+    targets: Sequence[tuple[str, str]],
+    window: Window,
+    progress: Progress | None = None,
+) -> dict[str, int]:
+    """Return how many results GitHub reports for each ID: one search per ID."""
+    counts = {}
+    for number, (_, model_id) in enumerate(targets, start=1):
+        if progress is not None:
+            progress(f"[{number}/{len(targets)}] {model_id}")
+        counts[model_id] = int(client.search(build_query(model_id, window), 1)["total_count"])
+    return counts
+
+
 def write_jsonl(candidates: Iterable[Candidate], path: Path) -> None:
     """Write one JSON object per line."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,6 +298,13 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     parser.add_argument(
         "--interval", type=float, default=6.0, help="Seconds between searches (default 6)."
     )
+    parser.add_argument(
+        "--focus-above",
+        type=int,
+        default=FOCUS_ABOVE,
+        help=f"Use migration words for IDs with more results (default {FOCUS_ABOVE:,}).",
+    )
+    parser.add_argument("--counts", action="store_true", help="Only count the results for each ID.")
     args = parser.parse_args(argv)
 
     if client is None:
@@ -213,13 +315,23 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
         client = CommitSearchClient(args.cache, token, min_interval=args.interval)
 
     targets = model_ids_to_search(load_registry(), args.only)
+    window = Window(args.start, args.end)
+
+    def progress(line: str) -> None:
+        print(line, file=sys.stderr)
+
     try:
-        candidates, stats = mine(
-            client,
-            targets,
-            Window(args.start, args.end),
-            progress=lambda line: print(line, file=sys.stderr),
+        if args.counts:
+            counts = count_results(client, targets, window, progress)
+        else:
+            candidates, stats = mine(client, targets, window, progress, args.focus_above)
+    except NetworkError:
+        print(
+            "The network kept failing. Everything fetched so far is saved in the cache. "
+            "Check your internet connection, then run the same command to continue.",
+            file=sys.stderr,
         )
+        return 3
     except RateLimitError:
         print(
             "GitHub is still refusing searches. Everything fetched so far is saved in the "
@@ -230,6 +342,8 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     except KeyboardInterrupt:
         print("Stopped. Run the same command to continue from the cache.", file=sys.stderr)
         return 130
+    if args.counts:
+        return print_counts(counts, args.focus_above, args.out.with_name("counts.json"))
     write_jsonl(candidates, args.out)
     stats_path = args.out.with_suffix(".stats.json")
     stats_path.write_text(json.dumps(asdict(stats), indent=2) + "\n", encoding="utf-8")
@@ -242,7 +356,20 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     print(f"Duplicates merged:   {stats.duplicates}")
     print(f"  same commit, other repo: {stats.copies_in_other_repos}")
     print(f"Truncated windows:   {len(stats.truncated_windows)}")
+    print(f"Searched with migration words: {len(stats.focused_ids)} IDs")
     print(f"Candidates written:  {len(candidates)} -> {args.out}")
+    return 0
+
+
+def print_counts(counts: dict[str, int], focus_above: int, path: Path) -> int:
+    """Print the counts, largest first, save them to ``path``, and return 0."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(counts, indent=2) + "\n", encoding="utf-8")
+    for model_id, total in sorted(counts.items(), key=lambda pair: -pair[1]):
+        mode = "migration words" if total > focus_above else "all"
+        print(f"{total:>12,}  {mode:<15}  {model_id}")
+    focused = sum(1 for total in counts.values() if total > focus_above)
+    print(f"IDs searched with migration words: {focused} of {len(counts)} -> {path}")
     return 0
 
 
