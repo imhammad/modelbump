@@ -6,9 +6,7 @@ from typing import Any
 
 import httpx
 
-QUERY = re.compile(
-    r'^"(?P<id>[^"]+)"(?: (?P<term>.+?))? committer-date:(?P<start>[\d-]+)\.\.(?P<end>[\d-]+)$'
-)
+QUERY = re.compile(r'^"(?P<id>[^"]+)" committer-date:(?P<start>[\d-]+)\.\.(?P<end>[\d-]+)$')
 
 
 def make_item(
@@ -53,12 +51,10 @@ class FakeGitHub:
         m = QUERY.match(q)
         assert m, f"unexpected query {q!r}"
         start, end = date.fromisoformat(m["start"]), date.fromisoformat(m["end"])
-        term = (m["term"] or "").strip('"').lower()
         hits = [
             item
             for model_id, item in self.commits
             if model_id == m["id"]
-            and term in item["commit"]["message"].lower()
             and start <= date.fromisoformat(item["commit"]["committer"]["date"][:10]) <= end
         ]
         hits.sort(key=lambda i: i["commit"]["committer"]["date"])

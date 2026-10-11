@@ -1,6 +1,6 @@
 # ADR 0010: Search hugely popular model IDs together with migration words
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0011](0011-search-huge-ids-from-the-notice.md)
 - **Date:** 2026-10-11
 - **Amends:** [ADR 0009](0009-mining-method.md)
 

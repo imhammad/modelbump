@@ -10,12 +10,12 @@ import pytest
 from modelbump.registry import load_registry
 from research.mining.github_search import CommitSearchClient
 from research.mining.miner import (
-    MIGRATION_TERMS,
     SKIPPED_IDS,
     MiningStats,
     Window,
     build_query,
     count_results,
+    focus_starts,
     main,
     mentions,
     mine,
@@ -42,11 +42,6 @@ def test_window_split_covers_every_day_once() -> None:
 
 def test_build_query_quotes_the_id() -> None:
     assert build_query("gpt-4", JANUARY) == '"gpt-4" committer-date:2026-01-01..2026-01-31'
-
-
-def test_build_query_with_a_migration_word() -> None:
-    query = build_query("gpt-4", JANUARY, '"shut down"')
-    assert query == '"gpt-4" "shut down" committer-date:2026-01-01..2026-01-31'
 
 
 def test_reads_every_page(tmp_path: Path) -> None:
@@ -224,25 +219,63 @@ def test_cached_windows_replay_silently(tmp_path: Path) -> None:
     assert again == ["[1/1] model-a"]
 
 
-def test_huge_ids_are_searched_with_migration_words(tmp_path: Path) -> None:
-    fake = FakeGitHub(
-        [
-            ("model-a", make_item("m1", "model-a", date(2026, 1, 2))),  # "Migrate from"
-            ("model-a", make_item("r1", "x", date(2026, 1, 3), message="Replace model-a")),
-            ("model-a", make_item("u1", "x", date(2026, 1, 4), message="Use model-a for chat")),
-        ]
+def huge_fake() -> FakeGitHub:
+    return FakeGitHub(
+        [("model-a", make_item(f"a{day}", "model-a", date(2026, 1, day))) for day in (2, 10, 20)]
     )
+
+
+def test_huge_ids_are_searched_from_the_notice(tmp_path: Path) -> None:
+    fake = huge_fake()
     lines: list[str] = []
     candidates, stats = mine(
-        make_client(tmp_path, fake), [("openai", "model-a")], JANUARY, lines.append, focus_above=2
+        make_client(tmp_path, fake),
+        [("openai", "model-a")],
+        JANUARY,
+        lines.append,
+        focus_above=2,
+        starts={"model-a": date(2026, 1, 9)},
     )
-    assert [c.sha for c in candidates] == ["m1", "r1"]
-    assert stats.focused_ids == ["model-a"]
+    assert [c.sha for c in candidates] == ["a10", "a20"]
+    assert stats.focused_starts == {"model-a": "2026-01-09"}
     assert stats.model_totals == {"model-a": 3}
-    assert "    3 results: too many, searching with migration words" in lines
-    # One count search, then one search per migration word.
-    assert len(fake.calls) == 1 + len(MIGRATION_TERMS)
-    assert stats.queries == 1 + len(MIGRATION_TERMS)
+    assert "    3 results: too many, searching from 2026-01-09 only" in lines
+    assert fake.calls[-1] == ('"model-a" committer-date:2026-01-09..2026-01-31', 1)
+
+
+def test_notice_after_the_end_searches_nothing_more(tmp_path: Path) -> None:
+    fake = huge_fake()
+    candidates, _ = mine(
+        make_client(tmp_path, fake),
+        [("openai", "model-a")],
+        JANUARY,
+        focus_above=2,
+        starts={"model-a": date(2026, 3, 1)},
+    )
+    assert candidates == []
+    assert len(fake.calls) == 1
+
+
+def test_huge_id_without_a_notice_is_searched_in_full(tmp_path: Path) -> None:
+    lines: list[str] = []
+    candidates, stats = mine(
+        make_client(tmp_path, huge_fake()),
+        [("google", "model-a")],
+        JANUARY,
+        lines.append,
+        focus_above=2,
+    )
+    assert len(candidates) == 3
+    assert stats.too_big_without_notice == ["model-a"]
+    assert "    3 results, but no deprecation notice date: searching all" in lines
+
+
+def test_focus_starts_are_30_days_before_the_earliest_notice() -> None:
+    starts = focus_starts(load_registry())
+    assert starts["gpt-4"] == date(2026, 3, 23)  # alias; notice on 2026-04-22
+    # Rescheduled: the first notice (2025-09-26) counts, not the later one.
+    assert starts["gpt-4-1106-preview"] == date(2025, 8, 27)
+    assert "gemini-2.0-flash" not in starts  # Google gives no notice dates
 
 
 def test_small_ids_reuse_the_first_search(tmp_path: Path) -> None:
@@ -250,7 +283,7 @@ def test_small_ids_reuse_the_first_search(tmp_path: Path) -> None:
     _, stats = mine(make_client(tmp_path, fake), [("openai", "model-a")], JANUARY)
     assert len(fake.calls) == 1
     assert stats.queries == 1
-    assert stats.focused_ids == []
+    assert stats.focused_starts == {}
 
 
 def test_count_results(tmp_path: Path) -> None:
@@ -271,8 +304,8 @@ def test_main_counts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     assert json.loads((tmp_path / "counts.json").read_text()) == {"claude-2.1": 3}
     assert not out.exists()
     printed = capsys.readouterr().out
-    assert "3  migration words  claude-2.1" in printed
-    assert "IDs searched with migration words: 1 of 1" in printed
+    assert "3  from 2024-12-22  claude-2.1" in printed
+    assert "IDs searched from the notice only: 1 of 1" in printed
 
 
 def test_main_stops_cleanly_when_the_network_is_down(

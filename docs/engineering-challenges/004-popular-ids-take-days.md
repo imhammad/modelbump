@@ -35,3 +35,7 @@ The hybrid ([ADR 0010](../adr/0010-hybrid-search-for-huge-ids.md)): IDs with mor
 ## Lesson
 
 I assumed the slow part was my internet. It was the amount of data. Before a long mining run, measure how big each search is first, and design for the biggest ones, not the typical ones.
+
+## Follow-up: migration words did not narrow enough
+
+The first run with ADR 0010 showed that searching an ID together with a migration word is fuzzy too. For `gemini-2.0-flash`, "replace" alone returned about 600 results every ten days, so the 12 words together would have cost almost as much as the full search. [ADR 0011](../adr/0011-search-huge-ids-from-the-notice.md) replaces the words with a date rule taken from Kim (2026): huge IDs are searched only from 30 days before the deprecation notice, because older commits are excluded from the dataset anyway. The lesson is the same, measured again: check how much a fix actually cuts, on real data, before trusting it.

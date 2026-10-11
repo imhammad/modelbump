@@ -8,11 +8,11 @@ by SHA: the same commit often lives in many repositories (copies, mirrors,
 templates), and we keep it once while recording every repository. Deciding
 which candidates are real migrations is a separate step.
 
-Some IDs (gpt-4, gpt-4o, gpt-3.5-turbo ...) are mentioned in so many commits
-that reading all of them would take days. For an ID with more than
-``--focus-above`` results (50,000 by default) we instead search the ID together
-with each migration word (migrate, replace, switch ...), as Kim (2026) did for
-every ID. See ADR 0010.
+Some IDs (gpt-4, gpt-3.5-turbo ...) are mentioned in so many commits that
+reading all of them would take days. For an ID with more than ``--focus-above``
+results (50,000 by default) we search only from 30 days before the provider's
+deprecation notice: Kim (2026) excludes older commits anyway, because they
+cannot be reactions to the notice. See ADR 0011.
 
 Run from the repo root:
     export GITHUB_TOKEN=$(gh auth token)
@@ -25,7 +25,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -44,25 +44,12 @@ from research.mining.github_search import (
 # return mostly unrelated commits. Their dated snapshots are still searched.
 SKIPPED_IDS = frozenset({"ada", "babbage", "curie", "davinci", "o1"})
 
-# An ID with more results than this is searched together with migration words
-# instead of on its own (ADR 0010).
+# An ID with more results than this is searched only from shortly before its
+# deprecation notice (ADR 0011).
 FOCUS_ABOVE = 50_000
 
-# The migration words of Kim (2026, Section 3), one search per word.
-MIGRATION_TERMS = (
-    "migrate",
-    "replace",
-    "switch",
-    "upgrade",
-    "update",
-    "remove",
-    "drop",
-    "swap",
-    "retire",
-    "deprecate",
-    "sunset",
-    '"shut down"',
-)
+# Kim (2026, Section 3) excludes commits made more than 30 days before the notice.
+BEFORE_NOTICE = timedelta(days=30)
 
 Progress = Callable[[str], None]
 
@@ -127,14 +114,14 @@ class MiningStats:
     copies_in_other_repos: int = 0
     focus_above: int = FOCUS_ABOVE
     model_totals: dict[str, int] = field(default_factory=dict)
-    focused_ids: list[str] = field(default_factory=list)
+    focused_starts: dict[str, str] = field(default_factory=dict)
+    too_big_without_notice: list[str] = field(default_factory=list)
     truncated_windows: list[str] = field(default_factory=list)
 
 
-def build_query(model_id: str, window: Window, term: str = "") -> str:
-    """Search for the exact model ID (and a migration word, if given) in one window."""
-    parts = [f'"{model_id}"', term, window.qualifier()]
-    return " ".join(part for part in parts if part)
+def build_query(model_id: str, window: Window) -> str:
+    """Search for the exact model ID in commit messages, inside one window."""
+    return f'"{model_id}" {window.qualifier()}'
 
 
 def search_window(
@@ -142,7 +129,6 @@ def search_window(
     model_id: str,
     window: Window,
     stats: MiningStats,
-    term: str = "",
     progress: Progress | None = None,
     first: dict[str, Any] | None = None,
     requests_before: int | None = None,
@@ -152,7 +138,7 @@ def search_window(
     ``first`` is page 1 of this exact search, when the caller already has it,
     and ``requests_before`` is the client's request count before it was fetched.
     """
-    query = build_query(model_id, window, term)
+    query = build_query(model_id, window)
     if requests_before is None:
         requests_before = client.requests_made
     if first is None:
@@ -161,7 +147,7 @@ def search_window(
     total = int(first["total_count"])
     if total > MAX_RESULTS and window.can_split():
         for half in window.split():
-            yield from search_window(client, model_id, half, stats, term, progress)
+            yield from search_window(client, model_id, half, stats, progress)
         return
     if total > MAX_RESULTS:
         # A single day with more than 1,000 results: we can only see the first 1,000.
@@ -173,8 +159,22 @@ def search_window(
         yield from client.search(query, page)["items"]
     if progress is not None and client.requests_made > requests_before:
         # Only windows that needed GitHub are shown; cached ones replay silently.
-        label = f"{term} " if term else ""
-        progress(f"    {label}{window.start}..{window.end}: {total:,} results")
+        progress(f"    {window.start}..{window.end}: {total:,} results")
+
+
+def focus_starts(registry: Registry) -> dict[str, date]:
+    """Return, for every ID with a known deprecation notice, the day to search from.
+
+    That is 30 days before the earliest notice, counting rescheduled plans.
+    """
+    starts = {}
+    for _, model in registry:
+        notices = [model.announced, *(plan.announced for plan in model.superseded)]
+        known = [day for day in notices if day is not None]
+        if known:
+            for model_id in model.all_ids():
+                starts[model_id] = min(known) - BEFORE_NOTICE
+    return starts
 
 
 def model_ids_to_search(registry: Registry, only: Sequence[str] = ()) -> list[tuple[str, str]]:
@@ -194,23 +194,27 @@ def search_model(
     window: Window,
     stats: MiningStats,
     progress: Progress | None = None,
+    start: date | None = None,
 ) -> Iterator[dict[str, Any]]:
-    """Yield the results for one ID: all of them, or only migration-word ones if huge."""
+    """Yield the results for one ID; if it is huge, only those from ``start`` on."""
     requests_before = client.requests_made
     first = client.search(build_query(model_id, window), 1)
     stats.queries += 1
     total = int(first["total_count"])
     stats.model_totals[model_id] = total
-    if total <= stats.focus_above:
-        yield from search_window(
-            client, model_id, window, stats, "", progress, first, requests_before
-        )
+    if total > stats.focus_above and start is None:
+        stats.too_big_without_notice.append(model_id)
+        if progress is not None:
+            progress(f"    {total:,} results, but no deprecation notice date: searching all")
+    if total <= stats.focus_above or start is None:
+        yield from search_window(client, model_id, window, stats, progress, first, requests_before)
         return
-    stats.focused_ids.append(model_id)
+    focused = Window(max(window.start, start), window.end)
+    stats.focused_starts[model_id] = focused.start.isoformat()
     if progress is not None:
-        progress(f"    {total:,} results: too many, searching with migration words")
-    for term in MIGRATION_TERMS:
-        yield from search_window(client, model_id, window, stats, term, progress)
+        progress(f"    {total:,} results: too many, searching from {focused.start} only")
+    if focused.start <= focused.end:
+        yield from search_window(client, model_id, focused, stats, progress)
 
 
 def mine(
@@ -219,6 +223,7 @@ def mine(
     window: Window,
     progress: Progress | None = None,
     focus_above: int = FOCUS_ABOVE,
+    starts: Mapping[str, date] | None = None,
 ) -> tuple[list[Candidate], MiningStats]:
     """Search every target ID and return de-duplicated, non-fork candidates."""
     stats = MiningStats(
@@ -229,7 +234,8 @@ def mine(
         stats.model_ids += 1
         if progress is not None:
             progress(f"[{number}/{len(targets)}] {model_id}")
-        for item in search_model(client, model_id, window, stats, progress):
+        start = (starts or {}).get(model_id)
+        for item in search_model(client, model_id, window, stats, progress, start):
             stats.items_seen += 1
             if item["repository"]["fork"]:
                 stats.forks_skipped += 1
@@ -302,7 +308,7 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
         "--focus-above",
         type=int,
         default=FOCUS_ABOVE,
-        help=f"Use migration words for IDs with more results (default {FOCUS_ABOVE:,}).",
+        help=f"Search IDs with more results only from their notice (default {FOCUS_ABOVE:,}).",
     )
     parser.add_argument("--counts", action="store_true", help="Only count the results for each ID.")
     args = parser.parse_args(argv)
@@ -314,7 +320,9 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
             return 1
         client = CommitSearchClient(args.cache, token, min_interval=args.interval)
 
-    targets = model_ids_to_search(load_registry(), args.only)
+    registry = load_registry()
+    targets = model_ids_to_search(registry, args.only)
+    starts = focus_starts(registry)
     window = Window(args.start, args.end)
 
     def progress(line: str) -> None:
@@ -324,7 +332,7 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
         if args.counts:
             counts = count_results(client, targets, window, progress)
         else:
-            candidates, stats = mine(client, targets, window, progress, args.focus_above)
+            candidates, stats = mine(client, targets, window, progress, args.focus_above, starts)
     except NetworkError:
         print(
             "The network kept failing. Everything fetched so far is saved in the cache. "
@@ -343,7 +351,7 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
         print("Stopped. Run the same command to continue from the cache.", file=sys.stderr)
         return 130
     if args.counts:
-        return print_counts(counts, args.focus_above, args.out.with_name("counts.json"))
+        return print_counts(counts, args.focus_above, starts, args.out.with_name("counts.json"))
     write_jsonl(candidates, args.out)
     stats_path = args.out.with_suffix(".stats.json")
     stats_path.write_text(json.dumps(asdict(stats), indent=2) + "\n", encoding="utf-8")
@@ -356,20 +364,25 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     print(f"Duplicates merged:   {stats.duplicates}")
     print(f"  same commit, other repo: {stats.copies_in_other_repos}")
     print(f"Truncated windows:   {len(stats.truncated_windows)}")
-    print(f"Searched with migration words: {len(stats.focused_ids)} IDs")
+    print(f"Searched from the notice only: {len(stats.focused_starts)} IDs")
     print(f"Candidates written:  {len(candidates)} -> {args.out}")
     return 0
 
 
-def print_counts(counts: dict[str, int], focus_above: int, path: Path) -> int:
+def print_counts(
+    counts: dict[str, int], focus_above: int, starts: Mapping[str, date], path: Path
+) -> int:
     """Print the counts, largest first, save them to ``path``, and return 0."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(counts, indent=2) + "\n", encoding="utf-8")
+    focused = 0
     for model_id, total in sorted(counts.items(), key=lambda pair: -pair[1]):
-        mode = "migration words" if total > focus_above else "all"
+        mode = "all"
+        if total > focus_above and model_id in starts:
+            mode = f"from {starts[model_id]}"
+            focused += 1
         print(f"{total:>12,}  {mode:<15}  {model_id}")
-    focused = sum(1 for total in counts.values() if total > focus_above)
-    print(f"IDs searched with migration words: {focused} of {len(counts)} -> {path}")
+    print(f"IDs searched from the notice only: {focused} of {len(counts)} -> {path}")
     return 0
 
 

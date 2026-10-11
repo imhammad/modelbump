@@ -15,4 +15,5 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0007](0007-rescheduled-retirements.md) | Keep rescheduled retirements as superseded plans | Accepted |
 | [0008](0008-research-code-separate-from-product.md) | Research code lives in `research/`, separate from the product | Accepted |
 | [0009](0009-mining-method.md) | Mine with one search per model ID and split windows at the cap | Accepted, amended by 0010 |
-| [0010](0010-hybrid-search-for-huge-ids.md) | Search hugely popular model IDs together with migration words | Accepted |
+| [0010](0010-hybrid-search-for-huge-ids.md) | Search hugely popular model IDs together with migration words | Superseded by 0011 |
+| [0011](0011-search-huge-ids-from-the-notice.md) | Search hugely popular model IDs only from shortly before the deprecation notice | Accepted |
