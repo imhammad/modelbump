@@ -39,3 +39,7 @@ I assumed the slow part was my internet. It was the amount of data. Before a lon
 ## Follow-up: migration words did not narrow enough
 
 The first run with ADR 0010 showed that searching an ID together with a migration word is fuzzy too. For `gemini-2.0-flash`, "replace" alone returned about 600 results every ten days, so the 12 words together would have cost almost as much as the full search. [ADR 0011](../adr/0011-search-huge-ids-from-the-notice.md) replaces the words with a date rule taken from Kim (2026): huge IDs are searched only from 30 days before the deprecation notice, because older commits are excluded from the dataset anyway. The lesson is the same, measured again: check how much a fix actually cuts, on real data, before trusting it.
+
+## Follow-up: one search that GitHub could not answer
+
+At ID 71 of 139 (`o1-pro`), the run crashed with `502 Bad Gateway` on page 2 of one date window, and it crashed on the same request again after a restart. A 502 means GitHub's own servers failed, often because a search took them too long. The miner treated every error other than rate limits and network problems as fatal. Now server errors are retried three times (30, 60, 120 seconds). If a window still fails, it is split in half, because smaller searches are quicker for GitHub. A single day that still fails is skipped and recorded in `failed_windows`, so the run always finishes and the paper can report what is missing.

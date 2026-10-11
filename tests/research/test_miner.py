@@ -323,3 +323,59 @@ def test_main_stops_cleanly_when_the_network_is_down(
     )
     assert main(["--only", "claude-2.1"], client=client) == 3
     assert "Check your internet connection" in capsys.readouterr().err
+
+
+def failing_on(fake: FakeGitHub, broken: set[tuple[str, int]]) -> httpx.MockTransport:
+    """A transport that answers 502 for the given (query, page) pairs."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = (request.url.params["q"], int(request.url.params["page"]))
+        if key in broken:
+            return httpx.Response(502, text="Bad Gateway")
+        return fake.handler(request)
+
+    return httpx.MockTransport(handler)
+
+
+def server_error_client(tmp_path: Path, transport: httpx.MockTransport) -> CommitSearchClient:
+    return CommitSearchClient(
+        tmp_path / "cache", transport=transport, sleep=lambda _: None, min_interval=0
+    )
+
+
+def test_a_window_github_keeps_failing_is_split(tmp_path: Path) -> None:
+    # Real case: page 2 of one o1-pro window failed with 502 every time.
+    commits = [
+        ("model-a", make_item(f"s{i}", "model-a", date(2026, 1, 1) + timedelta(days=i % 31)))
+        for i in range(150)
+    ]
+    fake = FakeGitHub(commits)
+    broken = {('"model-a" committer-date:2026-01-01..2026-01-31', 2)}
+    stats = MiningStats()
+    lines: list[str] = []
+    client = server_error_client(tmp_path, failing_on(fake, broken))
+    items = list(search_window(client, "model-a", JANUARY, stats, lines.append))
+    assert len({i["sha"] for i in items}) == 150
+    assert len(items) == 150  # the failed window's first page is not repeated
+    assert "    2026-01-01..2026-01-31: GitHub kept failing, trying smaller windows" in lines
+    assert stats.failed_windows == []
+
+
+def test_a_single_day_github_keeps_failing_is_skipped_and_recorded(tmp_path: Path) -> None:
+    day = Window(date(2026, 1, 5), date(2026, 1, 5))
+    fake = FakeGitHub([("model-a", make_item("a1", "model-a", date(2026, 1, 5)))])
+    query = '"model-a" committer-date:2026-01-05..2026-01-05'
+    stats = MiningStats()
+    client = server_error_client(tmp_path, failing_on(fake, {(query, 1)}))
+    assert list(search_window(client, "model-a", day, stats)) == []
+    assert stats.failed_windows == [query]
+
+
+def test_main_stops_cleanly_when_github_keeps_failing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = server_error_client(
+        tmp_path, httpx.MockTransport(lambda _: httpx.Response(502, text="Bad Gateway"))
+    )
+    assert main(["--only", "claude-2.1"], client=client) == 4
+    assert "GitHub's servers kept failing" in capsys.readouterr().err

@@ -5,7 +5,8 @@ It does three things a research miner needs:
 - caches every raw response on disk, so a run can stop and resume, and every
   number in the paper can be traced back to the exact response it came from;
 - waits when GitHub says the rate limit is reached, as GitHub's docs ask;
-- waits and retries when the network drops (Wi-Fi off, a laptop that slept);
+- waits and retries when the network drops (Wi-Fi off, a laptop that slept)
+  or GitHub's servers fail (502 and other 5xx errors);
 - spaces requests out (one every 6 seconds by default). GitHub allows 30
   searches a minute, but a long run at that pace trips its "secondary"
   rate limit, which then refuses searches for a long time.
@@ -37,6 +38,10 @@ class NetworkError(RuntimeError):
     """Raised when the network keeps failing after every retry."""
 
 
+class ServerError(RuntimeError):
+    """Raised when GitHub keeps answering one search with a server error (5xx)."""
+
+
 class CommitSearchClient:
     """Search commits, with a disk cache and rate-limit handling."""
 
@@ -50,6 +55,7 @@ class CommitSearchClient:
         clock: Callable[[], float] = time.time,
         min_interval: float = 6.0,
         max_retries: int = 6,
+        server_retries: int = 3,
     ) -> None:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -65,6 +71,7 @@ class CommitSearchClient:
         self._clock = clock
         self._min_interval = min_interval
         self._max_retries = max_retries
+        self._server_retries = server_retries
         self._last_request = float("-inf")
         self.requests_made = 0
         self.cache_hits = 0
@@ -99,14 +106,15 @@ class CommitSearchClient:
             "sort": "committer-date",
             "order": "asc",
         }
-        network_failed = False
+        last_failure = "rate limit"
+        server_failures = 0
         for attempt in range(self._max_retries + 1):
             self._throttle()
             try:
                 response = self._http.get(SEARCH_URL, params=params)
             except httpx.TransportError as error:
                 # No answer at all: no internet, a dropped Wi-Fi, a timeout.
-                network_failed = True
+                last_failure = "network"
                 wait = 60.0 * 2.0**attempt
                 print(
                     f"Network problem ({type(error).__name__}); waiting {wait / 60:.0f} min ...",
@@ -114,9 +122,9 @@ class CommitSearchClient:
                 )
                 self._sleep(wait)
                 continue
-            network_failed = False
             self.requests_made += 1
             if _is_rate_limited(response):
+                last_failure = "rate limit"
                 wait = _wait_seconds(response, attempt, self._clock())
                 reason = _message(response).split(". ")[0]
                 print(
@@ -126,10 +134,29 @@ class CommitSearchClient:
                 )
                 self._sleep(wait)
                 continue
+            if response.status_code >= 500:
+                # GitHub's own servers failed, often because one search was too
+                # slow for them. A few short retries; after that the caller can
+                # try smaller windows instead.
+                server_failures += 1
+                last_failure = "server"
+                if server_failures > self._server_retries:
+                    raise ServerError(
+                        f"GitHub kept failing ({response.status_code}) for {query!r} (page {page})"
+                    )
+                wait = 30.0 * 2.0 ** (server_failures - 1)
+                print(
+                    f"GitHub server error ({response.status_code}); waiting {wait:.0f} s ...",
+                    file=sys.stderr,
+                )
+                self._sleep(wait)
+                continue
             response.raise_for_status()
             data: dict[str, Any] = response.json()
             return data
-        if network_failed:
+        if last_failure == "server":
+            raise ServerError(f"GitHub kept failing for {query!r} (page {page})")
+        if last_failure == "network":
             raise NetworkError(f"The network kept failing for {query!r} (page {page})")
         raise RateLimitError(f"GitHub kept refusing the search for {query!r} (page {page})")
 

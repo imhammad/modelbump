@@ -38,6 +38,7 @@ from research.mining.github_search import (
     CommitSearchClient,
     NetworkError,
     RateLimitError,
+    ServerError,
 )
 
 # IDs that are ordinary English words or too short: searching them would
@@ -117,6 +118,7 @@ class MiningStats:
     focused_starts: dict[str, str] = field(default_factory=dict)
     too_big_without_notice: list[str] = field(default_factory=list)
     truncated_windows: list[str] = field(default_factory=list)
+    failed_windows: list[str] = field(default_factory=list)
 
 
 def build_query(model_id: str, window: Window) -> str:
@@ -135,28 +137,46 @@ def search_window(
 ) -> Iterator[dict[str, Any]]:
     """Yield every result for ``model_id`` in ``window``, splitting when needed.
 
+    The window is split when it has more than 1,000 results, and also when
+    GitHub keeps failing on it: smaller searches are faster for GitHub to answer.
     ``first`` is page 1 of this exact search, when the caller already has it,
     and ``requests_before`` is the client's request count before it was fetched.
     """
     query = build_query(model_id, window)
     if requests_before is None:
         requests_before = client.requests_made
-    if first is None:
-        first = client.search(query, 1)
-        stats.queries += 1
-    total = int(first["total_count"])
-    if total > MAX_RESULTS and window.can_split():
+    items: list[dict[str, Any]] = []
+    try:
+        if first is None:
+            first = client.search(query, 1)
+            stats.queries += 1
+        total = int(first["total_count"])
+        split = total > MAX_RESULTS and window.can_split()
+        if not split:
+            items.extend(first["items"])
+            pages = -(-min(total, MAX_RESULTS) // PER_PAGE)  # ceiling division
+            for page in range(2, pages + 1):
+                stats.queries += 1
+                items.extend(client.search(query, page)["items"])
+    except ServerError:
+        if not window.can_split():
+            stats.failed_windows.append(query)
+            if progress is not None:
+                progress(f"    {window.start}..{window.end}: GitHub kept failing, skipped")
+            return
+        if progress is not None:
+            progress(
+                f"    {window.start}..{window.end}: GitHub kept failing, trying smaller windows"
+            )
+        split = True
+    if split:
         for half in window.split():
             yield from search_window(client, model_id, half, stats, progress)
         return
     if total > MAX_RESULTS:
         # A single day with more than 1,000 results: we can only see the first 1,000.
         stats.truncated_windows.append(query)
-    yield from first["items"]
-    pages = -(-min(total, MAX_RESULTS) // PER_PAGE)  # ceiling division
-    for page in range(2, pages + 1):
-        stats.queries += 1
-        yield from client.search(query, page)["items"]
+    yield from items
     if progress is not None and client.requests_made > requests_before:
         # Only windows that needed GitHub are shown; cached ones replay silently.
         progress(f"    {window.start}..{window.end}: {total:,} results")
@@ -333,6 +353,13 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
             counts = count_results(client, targets, window, progress)
         else:
             candidates, stats = mine(client, targets, window, progress, args.focus_above, starts)
+    except ServerError:
+        print(
+            "GitHub's servers kept failing. Everything fetched so far is saved in the cache. "
+            "Wait a while, then run the same command to continue.",
+            file=sys.stderr,
+        )
+        return 4
     except NetworkError:
         print(
             "The network kept failing. Everything fetched so far is saved in the cache. "
@@ -364,6 +391,7 @@ def main(argv: Sequence[str] | None = None, client: CommitSearchClient | None = 
     print(f"Duplicates merged:   {stats.duplicates}")
     print(f"  same commit, other repo: {stats.copies_in_other_repos}")
     print(f"Truncated windows:   {len(stats.truncated_windows)}")
+    print(f"Failed windows:      {len(stats.failed_windows)}")
     print(f"Searched from the notice only: {len(stats.focused_starts)} IDs")
     print(f"Candidates written:  {len(candidates)} -> {args.out}")
     return 0

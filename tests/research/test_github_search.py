@@ -12,6 +12,7 @@ from research.mining.github_search import (
     CommitSearchClient,
     NetworkError,
     RateLimitError,
+    ServerError,
 )
 from tests.research.fake_github import FakeGitHub, make_item
 
@@ -187,3 +188,39 @@ def test_gives_up_when_the_network_stays_down(tmp_path: Path, fake: FakeGitHub) 
     fake.network_errors = 10
     with pytest.raises(NetworkError):
         make_client(tmp_path, fake, FakeClock()).search(QUERY)
+
+
+def bad_gateway() -> httpx.Response:
+    return httpx.Response(502, text="Bad Gateway")
+
+
+def test_server_errors_are_retried(
+    tmp_path: Path, fake: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Real case: GitHub answered one o1-pro search with "502 Bad Gateway".
+    fake.refusals += [bad_gateway(), bad_gateway()]
+    clock = FakeClock()
+    result = make_client(tmp_path, fake, clock).search(QUERY)
+    assert result["total_count"] == 1
+    assert [s for s in clock.sleeps if s >= 30] == [30.0, 60.0]
+    assert "GitHub server error (502); waiting 30 s" in capsys.readouterr().err
+
+
+def test_gives_up_on_a_search_github_keeps_failing(tmp_path: Path, fake: FakeGitHub) -> None:
+    fake.refusals += [bad_gateway() for _ in range(4)]
+    with pytest.raises(ServerError):
+        make_client(tmp_path, fake, FakeClock()).search(QUERY)
+    assert fake.refusals == []  # 1 try + 3 retries
+
+
+def test_last_failure_decides_the_error(tmp_path: Path, fake: FakeGitHub) -> None:
+    fake.refusals += [bad_gateway(), bad_gateway()]
+    client = CommitSearchClient(
+        tmp_path / "cache",
+        transport=fake.transport(),
+        sleep=lambda _: None,
+        min_interval=0,
+        max_retries=1,
+    )
+    with pytest.raises(ServerError):
+        client.search(QUERY)
