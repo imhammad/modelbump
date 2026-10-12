@@ -33,3 +33,27 @@ For a `yes`, fill in `from_model` (the retired model it moves away from) and `to
 Open the `url` whenever the message is not enough to decide; the diff usually settles it. If a commit mentions several retired models, it is a `yes` if it moves away from any of them.
 
 This definition is our own. Kim (2026) does not publish its coding guide, so our precision is not directly comparable to Kim's 62%.
+
+## Scoring
+
+When the labels are in, run:
+
+```
+uv run python -m research.validation.score
+```
+
+For each stratum it prints how many commits were labelled `yes`, as a share with a 95% Wilson interval. `unsure` rows are counted but left out of the share. From those numbers it estimates:
+
+- the **precision** of the `migration` label over the full set, as the strict and broad-only shares weighted by their sizes, with a 95% margin;
+- how many real migrations sit among the **rejected** candidates, as the rejected share times the rejected population;
+- a rough **recall**, as real migrations kept divided by kept plus missed.
+
+The rejected stratum is large and the sample from it is small, so the recall estimate is rough.
+
+If someone else labels a copy of `sample.csv` independently, pass it with `--second` to get Cohen's kappa over the rows both of you labelled:
+
+```
+uv run python -m research.validation.score --second research/data/validation/sample_b.csv
+```
+
+The results are also written to `research/data/validation/scores.json`.
