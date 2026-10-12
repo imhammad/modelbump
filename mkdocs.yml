@@ -67,6 +67,7 @@ nav:
       - adr/0013-validation-sample.md
       - adr/0014-filter-rules-v2.md
       - adr/0015-fresh-sample-for-rules-v2.md
+      - adr/0016-migration-timing.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
@@ -84,3 +85,4 @@ nav:
       - research/mining.md
       - research/filtering.md
       - research/validation.md
+      - research/timing.md
