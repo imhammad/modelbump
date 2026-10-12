@@ -17,3 +17,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0009](0009-mining-method.md) | Mine with one search per model ID and split windows at the cap | Accepted, amended by 0010 |
 | [0010](0010-hybrid-search-for-huge-ids.md) | Search hugely popular model IDs together with migration words | Superseded by 0011 |
 | [0011](0011-search-huge-ids-from-the-notice.md) | Search hugely popular model IDs only from shortly before the deprecation notice | Accepted |
+| [0012](0012-migration-filter-as-flags.md) | Label migration commits with one flag per rule, and keep AI-assisted commits separate | Accepted |
