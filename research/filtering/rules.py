@@ -54,7 +54,18 @@ END_QUOTE = r"[`'\")\]]?"
 # What follows "X to": something that looks like a model ID (has a digit or a
 # hyphen), so "set model to gpt-4 to save cost" is not read as gpt-4 -> "save".
 NEXT_MODEL = r"[`'\"]?[a-z][\w.]*(-[\w.]+|\d)"
-ADJECTIVES = r"(?:(?:the|old|older|legacy|deprecated|retired|outdated)\s+)*"
+ADJECTIVES = (
+    r"(?:(?:the|old|older|legacy|deprecated|retired|outdated|discontinued|unavailable|dead"
+    r"|stale|invalid|broken|non-existent|model|id)\s+)*"
+)
+# A word that says the model itself is gone or going: "X was retired", "X, which
+# is no longer served", "X returns 404". Rules v2 (ADR 0014).
+GONE = (
+    r"(deprecat\w*|retir\w*|discontinu\w*|sunset\w*|removed|shut ?down|no longer\b"
+    r"|not available|unavailable|404)"
+)
+# Removal verbs as whole words, so "dropdown" is not "drop".
+REMOVE = r"(remove[sd]?|removing|drop(s|ped|ping)?|purge[sd]?|purging|deactivate[sd]?|deactivating)"
 # Words that may sit between "to" and the ID: "switch embeddings to Gemini text-embedding-004".
 FILLERS = (
     r"(?:(?:the|a|new|newer|latest|model|models|openai|anthropic|google|gemini|claude|azure"
@@ -100,6 +111,11 @@ def _direction_patterns(model_id: str) -> tuple[re.Pattern[str], re.Pattern[str]
         rf"\bdeprecated\s+(model\s+)?{QUOTE}{mid}",
         rf"{mid}{END_QUOTE}\s+(is|was|has been|will be|being|got)\s+"
         rf"(deprecated|retired|removed|shut ?down|sunset)",
+        # Rules v2 (ADR 0014), from the validation sample's misses.
+        rf"{mid}{END_QUOTE}\s+model\s+(->|=>|→|➡|\bto\b)\s*{NEXT_MODEL}",
+        rf"{mid}{END_QUOTE}[^.\n;]{{0,40}}?\b{GONE}",
+        rf"\b{REMOVE}\b[^\n]{{0,60}}?{QUOTE}{mid}",
+        rf"\b(replaces|supersedes)\s+{ADJECTIVES}{QUOTE}{mid}",
     ]
     into = [
         rf"\b(to|use|uses|using|default(s|ed)?\s+to|revert(s|ed|ing)?\s+to|back\s+to)\s+"

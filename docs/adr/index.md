@@ -19,3 +19,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0011](0011-search-huge-ids-from-the-notice.md) | Search hugely popular model IDs only from shortly before the deprecation notice | Accepted |
 | [0012](0012-migration-filter-as-flags.md) | Label migration commits with one flag per rule, and keep AI-assisted commits separate | Accepted |
 | [0013](0013-validation-sample.md) | Check the migration filter on a blind, stratified sample of 300 commits | Accepted |
+| [0014](0014-filter-rules-v2.md) | Filter rules v2, a `migration_away` label, and a fresh sample to measure them | Accepted |

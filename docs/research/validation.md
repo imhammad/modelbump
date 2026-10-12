@@ -57,3 +57,26 @@ uv run python -m research.validation.score --second research/data/validation/sam
 ```
 
 The results are also written to `research/data/validation/scores.json`.
+
+## Re-check and second rater
+
+The first pass was re-checked once ([challenge 005](../engineering-challenges/005-first-pass-labels.md)):
+
+1. An AI model (Claude) read all 300 messages as a second rater, with this guide. Its answers are in `research/data/validation/sample_claude.csv`.
+2. The person who labelled re-read every row where the two disagreed, plus 15 random rows the AI had not flagged (seed 2026), and decided each one. A changed row has `changed in re-check` in `note`.
+3. The decisions are in `research/data/validation_adjudicated/` (a copy of the sample folder). The first pass is never edited.
+
+```
+uv run python -m research.validation.score --second research/data/validation/sample_claude.csv
+uv run python -m research.validation.score --dir research/data/validation_adjudicated --compare research/data/validation/sample.csv
+```
+
+The first prints the agreement between the first pass and the AI. The second scores the adjudicated labels and shows the first pass next to them.
+
+## Development check
+
+```
+uv run python -m research.validation.dev_check
+```
+
+It reruns the current filter rules on the adjudicated sample and prints, for each label, how many rows it flags, how many of those are `yes`, and the row numbers where rule and labels disagree. The rules were tuned on these rows, so these numbers are for developing the rules only. Quality is measured on a fresh sample ([ADR 0014](../adr/0014-filter-rules-v2.md)).

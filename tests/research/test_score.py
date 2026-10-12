@@ -96,6 +96,26 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert result["estimated_missed"] == 0
 
 
+def test_main_compare(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    strata = ["strict", "strict", "broad_only", "broad_only", "with_ai", "rejected"]
+    write_sample(tmp_path, {1: "yes", 2: "yes", 3: "yes", 4: "no", 5: "no", 6: "no"})
+    write_sample(
+        tmp_path, {1: "yes", 2: "no", 3: "no", 4: "no", 5: "no", 6: "no"}, name="first.csv"
+    )
+    with (tmp_path / "sample_key.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["n", "sha", "stratum", "direction", "after_notice_start"])
+        for n, name in enumerate(strata, start=1):
+            writer.writerow([n, f"s{n}", name, "away", "True"])
+    (tmp_path / "strata.json").write_text(json.dumps({"population": POPULATION}))
+    assert main(["--dir", str(tmp_path), "--compare", str(tmp_path / "first.csv")]) == 0
+    out = capsys.readouterr().out
+    assert "Side by side" in out
+    assert "strict       100.0%  vs   50.0%" in out
+    result = json.loads((tmp_path / "scores.json").read_text())
+    assert result["compare"]["strata"]["broad_only"]["yes"] == 0
+
+
 def test_main_needs_a_sample(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--dir", str(tmp_path)]) == 1
     assert "Run research.validation.sample first" in capsys.readouterr().err

@@ -72,6 +72,61 @@ def test_migration_word_in_any_form(message: str, expected: bool) -> None:
         ("gpt-4o -> gpt-4", "gpt-4", "into"),
         ("Replace the summariser with gpt-4", "gpt-4", "into"),
         ("Use gpt-4o instead", "gpt-4", "unclear"),  # not the same ID
+        # Rules v2 (ADR 0014): shapes the validation sample showed v1 missed.
+        (
+            "Fix Gemini model: gemini-2.0-flash removed, use gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "away",
+        ),
+        (
+            "The previous default `claude-3-5-sonnet-20241022` is no longer served",
+            "claude-3-5-sonnet-20241022",
+            "away",
+        ),
+        (
+            "claude-sonnet-4-20250514 retired Jun 15 2026 and now 404s on every call,",
+            "claude-sonnet-4-20250514",
+            "away",
+        ),
+        (
+            "probeApiKey('gemini') hardcoded 'gemini-2.0-flash', which was retired from the",
+            "gemini-2.0-flash",
+            "away",
+        ),
+        (
+            "google/gemini-2.5-flash-lite-preview-09-2025  404 No endpoints found",
+            "gemini-2.5-flash-lite-preview-09-2025",
+            "away",
+        ),
+        (
+            "Replace unavailable model id claude-3-5-sonnet-20241022 with",
+            "claude-3-5-sonnet-20241022",
+            "away",
+        ),
+        (
+            "fix(brisa-bot): remove gemini-1.5-* e gemini-2.0-flash (descontinuados/404)",
+            "gemini-2.0-flash",
+            "away",
+        ),
+        (
+            "keeps gpt-4o-2024-11-20, deactivates gpt-4o-2024-05-13 and gpt-4o-2024-08-06",
+            "gpt-4o-2024-05-13",
+            "away",
+        ),
+        (
+            "- Gemini: gemini-3-pro (November 2025) replaces gemini-2.0-flash",
+            "gemini-2.0-flash",
+            "away",
+        ),
+        (
+            "update gemini-3.1-flash-lite-preview model to gemini-3.1-flash-lite",
+            "gemini-3.1-flash-lite-preview",
+            "away",
+        ),
+        # ... and what they must still leave alone.
+        ("add a model dropdown for gemini-2.0-flash", "gemini-2.0-flash", "unclear"),
+        ("remove the retry loop\nuse gemini-2.0-flash", "gemini-2.0-flash", "into"),
+        ("gemini-2.0-flash: 1.0 req/s, retired keys are skipped", "gemini-2.0-flash", "unclear"),
     ],
 )
 def test_direction(message: str, model_id: str, expected: str) -> None:

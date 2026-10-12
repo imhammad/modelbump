@@ -65,12 +65,14 @@ nav:
       - adr/0011-search-huge-ids-from-the-notice.md
       - adr/0012-migration-filter-as-flags.md
       - adr/0013-validation-sample.md
+      - adr/0014-filter-rules-v2.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
       - engineering-challenges/002-one-model-two-shutdown-dates.md
       - engineering-challenges/003-fuzzy-commit-search.md
       - engineering-challenges/004-popular-ids-take-days.md
+      - engineering-challenges/005-first-pass-labels.md
   - Dev journal:
       - journal/index.md
       - journal/2026-10-07.md

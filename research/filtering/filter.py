@@ -8,6 +8,8 @@ two labels used in the paper:
   more than 30 days before the notice, not a bot, no AI-tool trailer.
 - ``migration_strict``: the same, and the message clearly moves *away* from
   the model ("from X", "X to Y", "replace X with", "remove X" ...).
+- ``migration_away``: the message clearly moves away from the model and is not
+  from a bot, whatever its date, wording or AI trailer (rules v2, ADR 0014).
 
 Run from the repo root:
     uv run python -m research.filtering.filter
@@ -33,11 +35,16 @@ from research.filtering.rules import (
 )
 from research.mining.miner import focus_starts
 
+# Version of the rules in research.filtering.rules, written to the stats file
+# so every number can be traced to the rules that produced it (ADR 0014).
+RULES_VERSION = 2
+
 
 @dataclass
 class FilterStats:
     """The funnel: how many candidates pass each rule, in order."""
 
+    rules_version: int = RULES_VERSION
     candidates: int = 0
     with_migration_word: int = 0
     not_into: int = 0
@@ -46,6 +53,7 @@ class FilterStats:
     migration_with_ai: int = 0
     migration: int = 0
     migration_strict: int = 0
+    migration_away: int = 0
     directions: dict[str, int] = field(default_factory=dict)
     no_notice_date: int = 0
     ai_trailer: int = 0
@@ -75,6 +83,7 @@ def label(candidate: dict[str, Any], starts: Mapping[str, date]) -> dict[str, An
         "migration": kim and not ai_trailer,
         "migration_strict": kim and not ai_trailer and way == "away",
         "migration_with_ai": kim and ai_trailer,
+        "migration_away": way == "away" and not bot,
     }
 
 
@@ -92,6 +101,7 @@ def run(
         stats.no_notice_date += row["after_notice_start"] is None
         stats.ai_trailer += row["ai_trailer"]
         stats.ai_style += row["ai_style"]
+        stats.migration_away += row["migration_away"]
         if not row["migration_word"]:
             continue
         stats.with_migration_word += 1
@@ -154,6 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     line("  ... and no AI-tool trailer = MIGRATION", stats.migration)
     line("  of which clearly away from it (strict)", stats.migration_strict)
     line("Same rules, with an AI-tool trailer", stats.migration_with_ai)
+    line("Clearly away, any date or trailer = AWAY", stats.migration_away)
     print()
     directions = ", ".join(f"{k} {v:,}" for k, v in sorted(stats.directions.items()))
     providers = ", ".join(f"{k} {v:,}" for k, v in sorted(stats.by_provider.items()))
@@ -161,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Migrations by provider:       {providers}")
     print(f"No notice date (kept):        {stats.no_notice_date:,}")
     print(f"AI-tool trailer / AI style:   {stats.ai_trailer:,} / {stats.ai_style:,}")
+    print(f"Rules version:                {stats.rules_version}")
     print(f"Written: {args.out} and {stats_path}")
     return 0
 

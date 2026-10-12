@@ -66,6 +66,14 @@ def test_ai_trailer_is_counted_separately() -> None:
     assert row["migration_with_ai"]
 
 
+def test_away_label_ignores_date_and_trailer() -> None:
+    early = label(candidate("Migrate from gpt-4 to gpt-4o", day="2024-05-13"), STARTS)
+    assert not early["migration"] and early["migration_away"]
+    message = "Migrate from gpt-4 to gpt-5.6-sol\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+    assert label(candidate(message), STARTS)["migration_away"]
+    assert not label(candidate("Update models (gpt-4)"), STARTS)["migration_away"]
+
+
 def test_unclear_direction_is_broad_but_not_strict() -> None:
     row = label(candidate("Update models (gpt-4)"), STARTS)
     assert row["migration"] and not row["migration_strict"]
@@ -90,6 +98,8 @@ def test_run_counts_the_funnel() -> None:
     assert stats.migration == 2
     assert stats.migration_strict == 1
     assert stats.migration_with_ai == 1
+    assert stats.migration_away == 3
+    assert stats.rules_version == 2
     assert stats.by_provider == {"openai": 2}
     assert stats.directions == {"away": 3, "into": 2, "unclear": 1}
 

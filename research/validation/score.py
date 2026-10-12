@@ -10,6 +10,7 @@ people (Cohen's kappa).
 Run from the repo root:
     uv run python -m research.validation.score
     uv run python -m research.validation.score --second research/data/validation/sample_b.csv
+    uv run python -m research.validation.score --compare research/data/validation/sample.csv
 """
 
 import argparse
@@ -123,6 +124,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dir", type=Path, default=Path("research/data/validation"))
     parser.add_argument("--second", type=Path, help="The same sample, labelled by someone else.")
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        help="Other labels for the same sample, shown side by side.",
+    )
     args = parser.parse_args(argv)
     sample = args.dir / "sample.csv"
     if not sample.exists():
@@ -172,6 +178,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Agreement (Cohen's kappa) over {shared} rows: {kappa:.2f}")
         result["kappa"] = kappa
         result["kappa_rows"] = shared
+    if args.compare is not None:
+        other = score_strata(read_labels(args.compare), key, population)
+        other_precision, _ = weighted_precision(other, ["strict", "broad_only"])
+        print(f"\nSide by side: this set vs {args.compare}")
+        for name in scores:
+            print(f"  {name:<12}{scores[name].share:7.1%}  vs {other[name].share:7.1%}")
+        print(f"  {'precision':<12}{precision:7.1%}  vs {other_precision:7.1%}")
+        result["compare"] = {
+            "labels": str(args.compare),
+            "strata": {name: asdict(s) for name, s in other.items()},
+            "precision": other_precision,
+        }
     (args.dir / "scores.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(f"Written: {args.dir / 'scores.json'}")
     return 0
