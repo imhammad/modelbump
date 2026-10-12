@@ -74,6 +74,7 @@ nav:
       - engineering-challenges/003-fuzzy-commit-search.md
       - engineering-challenges/004-popular-ids-take-days.md
       - engineering-challenges/005-first-pass-labels.md
+      - engineering-challenges/006-into-counted-as-yes.md
   - Dev journal:
       - journal/index.md
       - journal/2026-10-07.md

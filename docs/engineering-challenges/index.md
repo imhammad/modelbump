@@ -38,3 +38,4 @@ What we'd do differently from now on.
 | [003](003-fuzzy-commit-search.md) | GitHub's commit search is fuzzy | Research mining |
 | [004](004-popular-ids-take-days.md) | Popular model IDs would take days to mine | Research mining |
 | [005](005-first-pass-labels.md) | The hand labels needed checking too | Research validation |
+| [006](006-into-counted-as-yes.md) | A model switch is not always a migration away | Research validation |

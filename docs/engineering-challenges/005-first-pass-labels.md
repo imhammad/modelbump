@@ -30,7 +30,3 @@ Labelling 300 long commit messages in one sitting is tiring, and a switch buried
 ## Fix
 
 The third option. The first pass stays in `research/data/validation/`, the adjudicated labels are in `research/data/validation_adjudicated/`, and `research.validation.score --compare` shows them side by side. After adjudication the strict share is 86% (78% to 92%). First pass vs adjudicated: Cohen's kappa 0.76. The paper states that the second rater was an AI model.
-
-## Lesson
-
-_To be written by Hammad._
