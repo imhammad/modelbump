@@ -15,6 +15,7 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 
 - [Mining candidate migration commits](mining.md)
 - [Filtering: which candidates are migrations](filtering.md)
+- [Validation: labelling a sample by hand](validation.md)
 
 ## Key prior work
 

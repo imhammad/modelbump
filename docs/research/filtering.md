@@ -35,4 +35,4 @@ It reads `research/data/candidates.jsonl` and writes `research/data/labeled.json
 
 ## Validation
 
-The rules are tested on real messages from the run, but their precision on the whole set is unknown until a random sample is labelled by hand. That is the next step.
+The rules are tested on real messages from the run, but their precision on the whole set is unknown until a random sample is labelled by hand. See [validation](validation.md).
