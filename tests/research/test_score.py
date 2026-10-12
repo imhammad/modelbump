@@ -116,6 +116,25 @@ def test_main_compare(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     assert result["compare"]["strata"]["broad_only"]["yes"] == 0
 
 
+def test_main_design_v2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    strata = ["away"] * 4 + ["other_kept"] * 2 + ["rejected"] * 2
+    answers = ["yes", "yes", "yes", "no", "yes", "no", "no", "no"]
+    write_sample(tmp_path, dict(enumerate(answers, start=1)))
+    with (tmp_path / "sample_key.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["n", "sha", "stratum", "direction", "after_notice_start"])
+        for n, name in enumerate(strata, start=1):
+            writer.writerow([n, f"s{n}", name, "away", "True"])
+    population = {"away": 1000, "other_kept": 200, "rejected": 5000}
+    (tmp_path / "strata.json").write_text(json.dumps({"design": "v2", "population": population}))
+    assert main(["--dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "Precision of 'migration_away' (weighted): 75.0%" in out
+    assert "misses (estimate): about 100" in out  # half of other_kept, none of rejected
+    assert "AI-tool trailer" not in out
+    assert json.loads((tmp_path / "scores.json").read_text())["label"] == "migration_away"
+
+
 def test_main_needs_a_sample(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--dir", str(tmp_path)]) == 1
     assert "Run research.validation.sample first" in capsys.readouterr().err

@@ -7,8 +7,12 @@ the ``migration`` label over the full set, and how many migrations the filter
 rejected by mistake. With ``--second`` it also reports agreement between two
 people (Cohen's kappa).
 
+For a design-v2 sample (ADR 0015) it estimates the label ``migration_away``
+instead, from the folder's ``strata.json``.
+
 Run from the repo root:
     uv run python -m research.validation.score
+    uv run python -m research.validation.score --dir research/data/validation_v2
     uv run python -m research.validation.score --second research/data/validation/sample_b.csv
     uv run python -m research.validation.score --compare research/data/validation/sample.csv
 """
@@ -25,6 +29,13 @@ from pathlib import Path
 
 ANSWERS = {"yes": "yes", "y": "yes", "no": "no", "n": "no", "unsure": "unsure", "?": "unsure"}
 Z = 1.959964  # 95%
+
+# Per sample design: the label being measured, the strata it keeps, and the
+# strata whose "yes" rows are migrations it missed.
+DESIGNS: dict[str, tuple[str, list[str], list[str]]] = {
+    "v1": ("migration", ["strict", "broad_only"], ["rejected"]),
+    "v2": ("migration_away", ["away"], ["other_kept", "rejected"]),
+}
 
 
 @dataclass
@@ -137,7 +148,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     labels = read_labels(sample)
     key = read_key(args.dir / "sample_key.csv")
-    population = json.loads((args.dir / "strata.json").read_text(encoding="utf-8"))["population"]
+    strata = json.loads((args.dir / "strata.json").read_text(encoding="utf-8"))
+    population = strata["population"]
+    label, kept_strata, missed_strata = DESIGNS[strata.get("design", "v1")]
     scores = score_strata(labels, key, population)
 
     missing = len(key) - len(labels)
@@ -151,21 +164,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"   {s.share:6.1%} ({s.low:.1%} to {s.high:.1%})"
         )
 
-    precision, error = weighted_precision(scores, ["strict", "broad_only"])
-    kept = scores["strict"].population + scores["broad_only"].population
+    precision, error = weighted_precision(scores, kept_strata)
+    kept = sum(scores[s].population for s in kept_strata)
     true_kept = precision * kept
-    missed = scores["rejected"].share * scores["rejected"].population
+    missed = sum(scores[s].share * scores[s].population for s in missed_strata)
     recall = true_kept / (true_kept + missed) if true_kept + missed else 0.0
     print()
     print(
-        f"Precision of 'migration' (weighted): {precision:.1%} "
+        f"Precision of '{label}' (weighted): {precision:.1%} "
         f"(± {Z * error:.1%}) -> about {true_kept:,.0f} real migrations of {kept:,}"
     )
-    print(f"Migrations among rejected (estimate): about {missed:,.0f}")
-    print(f"Recall of 'migration' (rough estimate): {recall:.1%}")
-    print(f"Precision with an AI-tool trailer:     {scores['with_ai'].share:.1%}")
+    print(f"Migrations it misses (estimate): about {missed:,.0f}")
+    print(f"Recall of '{label}' (rough estimate): {recall:.1%}")
+    if "with_ai" in scores:
+        print(f"Precision with an AI-tool trailer:     {scores['with_ai'].share:.1%}")
 
     result = {
+        "label": label,
         "strata": {name: asdict(s) for name, s in scores.items()},
         "precision": precision,
         "precision_margin": Z * error,
@@ -180,7 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result["kappa_rows"] = shared
     if args.compare is not None:
         other = score_strata(read_labels(args.compare), key, population)
-        other_precision, _ = weighted_precision(other, ["strict", "broad_only"])
+        other_precision, _ = weighted_precision(other, kept_strata)
         print(f"\nSide by side: this set vs {args.compare}")
         for name in scores:
             print(f"  {name:<12}{scores[name].share:7.1%}  vs {other[name].share:7.1%}")

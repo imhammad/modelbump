@@ -20,3 +20,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0012](0012-migration-filter-as-flags.md) | Label migration commits with one flag per rule, and keep AI-assisted commits separate | Accepted |
 | [0013](0013-validation-sample.md) | Check the migration filter on a blind, stratified sample of 300 commits | Accepted |
 | [0014](0014-filter-rules-v2.md) | Filter rules v2, a `migration_away` label, and a fresh sample to measure them | Accepted |
+| [0015](0015-fresh-sample-for-rules-v2.md) | Measure rules v2 on a fresh, blind sample of 200 commits | Accepted |

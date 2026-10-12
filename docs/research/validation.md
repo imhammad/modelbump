@@ -34,6 +34,10 @@ Open the `url` whenever the message is not enough to decide; the diff usually se
 
 This definition is our own. Kim (2026) does not publish its coding guide, so our precision is not directly comparable to Kim's 62%.
 
+## Tips
+
+- Read every message to the end. In long commits the model switch is often one bullet near the bottom ([challenge 005](../engineering-challenges/005-first-pass-labels.md)).
+
 ## Scoring
 
 When the labels are in, run:
@@ -80,3 +84,19 @@ uv run python -m research.validation.dev_check
 ```
 
 It reruns the current filter rules on the adjudicated sample and prints, for each label, how many rows it flags, how many of those are `yes`, and the row numbers where rule and labels disagree. The rules were tuned on these rows, so these numbers are for developing the rules only. Quality is measured on a fresh sample ([ADR 0014](../adr/0014-filter-rules-v2.md)).
+
+## Second sample (design v2)
+
+Rules v2 are measured on a fresh sample ([ADR 0015](../adr/0015-fresh-sample-for-rules-v2.md)), after `research.filtering.filter` has been rerun with them:
+
+```
+uv run python -m research.validation.sample --design v2
+```
+
+It draws 200 commits (seed 2027) into `research/data/validation_v2/`: 100 labelled `migration_away`, 50 kept by Kim's rules but not "away", and 50 of the rest. Every commit of the first sample is left out. Label `sample.csv` exactly as before, without opening `sample_key.csv`, then:
+
+```
+uv run python -m research.validation.score --dir research/data/validation_v2
+```
+
+It reports the precision of `migration_away` and how many migrations it misses. A second person's copy can be passed with `--second` for Cohen's kappa.

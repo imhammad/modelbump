@@ -7,7 +7,15 @@ from typing import Any
 
 import pytest
 
-from research.validation.sample import STRATA, draw, main, stratum, stratum_sizes
+from research.validation.sample import (
+    STRATA,
+    STRATA_V2,
+    draw,
+    main,
+    stratum,
+    stratum_sizes,
+    stratum_v2,
+)
 
 
 def row(sha: str, kind: str, message: str = "Migrate from gpt-4 to gpt-5.6-sol") -> dict[str, Any]:
@@ -22,6 +30,7 @@ def row(sha: str, kind: str, message: str = "Migrate from gpt-4 to gpt-5.6-sol")
         "migration_strict": kind == "strict",
         "migration": kind in ("strict", "broad_only"),
         "migration_with_ai": kind == "with_ai",
+        "migration_away": kind in ("strict", "away"),
     }
 
 
@@ -93,3 +102,51 @@ def test_main_never_overwrites_labels(tmp_path: Path, capsys: pytest.CaptureFixt
 def test_main_needs_labeled(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--labeled", str(tmp_path / "missing.jsonl")]) == 1
     assert "Run research.filtering.filter first" in capsys.readouterr().err
+
+
+def test_stratum_v2() -> None:
+    assert stratum_v2(row("a", "strict")) == "away"
+    assert stratum_v2(row("a", "broad_only")) == "other_kept"
+    assert stratum_v2(row("a", "with_ai")) == "other_kept"
+    assert stratum_v2(row("a", "rejected")) == "rejected"
+
+
+def test_main_v2_leaves_out_labelled_commits(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = [row(f"aw{i:03}", "strict") for i in range(110)]
+    rows += [row(f"br{i:03}", "broad_only") for i in range(60)]
+    rows += [row(f"re{i:03}", "rejected") for i in range(60)]
+    earlier = tmp_path / "old_key.csv"
+    with earlier.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["n", "sha", "stratum", "direction", "after_notice_start"])
+        writer.writerows([[i, f"aw{i:03}", "strict", "away", "True"] for i in range(20)])
+    out = tmp_path / "validation_v2"
+    args = ["--labeled", str(write_labeled(tmp_path, rows)), "--out", str(out)]
+    assert main([*args, "--design", "v2", "--exclude", str(earlier)]) == 0
+    with (out / "sample_key.csv").open(encoding="utf-8") as f:
+        key = list(csv.DictReader(f))
+    assert len(key) == 90 + 50 + 50  # only 90 fresh "away" commits are left
+    assert not {k["sha"] for k in key} & {f"aw{i:03}" for i in range(20)}
+    strata = json.loads((out / "strata.json").read_text())
+    assert strata["design"] == "v2"
+    assert strata["seed"] == 2027
+    assert strata["population"] == {"away": 110, "other_kept": 60, "rejected": 60}
+    assert strata["sample"] == STRATA_V2
+    assert "Left out 20 commits" in capsys.readouterr().out
+
+
+def test_main_v2_needs_rules_v2_and_the_old_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = [{k: v for k, v in row("a", "strict").items() if k != "migration_away"}]
+    labeled = str(write_labeled(tmp_path, old))
+    key = tmp_path / "key.csv"
+    key.write_text("n,sha,stratum,direction,after_notice_start\n", encoding="utf-8")
+    out = str(tmp_path / "v2")
+    assert main(["--labeled", labeled, "--design", "v2", "--out", out, "--exclude", str(key)]) == 1
+    assert "rules v1" in capsys.readouterr().err
+    monkeypatch.chdir(tmp_path)  # so the default old key is not found
+    assert main(["--labeled", labeled, "--design", "v2", "--out", out]) == 1
+    assert "not found" in capsys.readouterr().err
