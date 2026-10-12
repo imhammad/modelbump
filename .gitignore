@@ -25,4 +25,5 @@ htmlcov/
 site/
 
 # Mined research data (published separately with a dataset card)
-research/data/
+research/data/*
+!research/data/README.md
