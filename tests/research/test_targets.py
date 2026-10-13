@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from modelbump.registry import Provider, ProviderFile, Registry, RetiredModel
+from modelbump.registry import Provider, ProviderFile, Registry, RetiredModel, load_registry
 from research.enrichment.targets import (
     base,
     change,
@@ -208,7 +208,8 @@ def test_same_model() -> None:
         ),
         ("Switch to gpt-4o since gpt-4 is deprecated", "gpt-4", "gpt-4o", "switch_to"),
         ("model: gpt-4 (old) -> claude-sonnet-4-5", "gpt-4", "claude-sonnet-4-5", "any_arrow"),
-        ("Drop gpt-4; we now run llama3.1 locally", "gpt-4", "llama3.1", "only_other"),
+        ("Drop gpt-4; we now run llama3.1 locally", "gpt-4", "llama3.1", "now_uses"),
+        ("Drop gpt-4 for good; llama3.1 is what we run", "gpt-4", "llama3.1", "only_other"),
         ("Remove deprecated text-davinci-003", "text-davinci-003", None, None),
         ("Drop gpt-4, use gpt-4o or claude-sonnet-4-5", "gpt-4", None, None),
     ],
@@ -308,3 +309,51 @@ def test_main_without_input(tmp_path: Path) -> None:
     empty = tmp_path / "labeled.jsonl"
     empty.write_text(json.dumps({**commit("x"), "migration_away": False}) + "\n")
     assert main(["--labeled", str(empty), "--out", str(tmp_path / "t.jsonl")]) == 1
+
+
+def test_rules_from_the_first_sample() -> None:
+    """Cases from the first sample's disagreements (ADR 0017, revision)."""
+    reg = load_registry()
+    # A wildcard names a family, not a model.
+    assert model_tokens("gemini-2.0-flash and gemini-2.5-* return 404") == ["gemini-2.0-flash"]
+    # Google's and Anthropic's "-latest" aliases are models.
+    assert model_tokens("use gemini-flash-lite-latest, claude-haiku-latest") == [
+        "gemini-flash-lite-latest",
+        "claude-haiku-latest",
+    ]
+    cases = [
+        ("Embeddings: text-embedding-004 is gone. Replaced with gemini-embedding-2.", "now_uses"),
+        ("Defaults are now gpt-5.5; o4-mini removed as any default.", "now_uses"),
+    ]
+    assert extract_target(cases[0][0], "text-embedding-004", reg) == (
+        "gemini-embedding-2",
+        "now_uses",
+    )
+    assert extract_target(cases[1][0], "o4-mini", reg) == ("gpt-5.5", "now_uses")
+    # The new model next to "retired" is still the target.
+    message = "embeds via REST (gemini-embedding-001, 768 dims - text-embedding-004 was retired)"
+    assert extract_target(message, "text-embedding-004", reg) == (
+        "gemini-embedding-001",
+        "only_other",
+    )
+    # A model listed next to the one removed is removed too, not a target.
+    message = "docs: sync model table - remove gemini-3.1-flash-lite, gemini-3.5-flash"
+    assert extract_target(message, "gemini-3.1-flash-lite", reg) == (None, None)
+
+
+def test_ai_assisted_and_shut_down_targets() -> None:
+    reg = registry()
+    row = target_row(
+        commit("switch from gpt-4 to text-davinci-003\n\nReplit-Commit-Author: Agent"), reg
+    )
+    assert row is not None
+    assert row["ai_assisted"] is True
+    assert row["target_shut_down_before"] is True
+    plain = target_row(commit("switch from gpt-4 to gpt-4o-2024-05-13"), reg)
+    assert plain is not None
+    assert plain["ai_assisted"] is False
+    assert plain["target_shut_down_before"] is False
+    trailer = target_row({**commit("from gpt-4 to gpt-4o"), "ai_trailer": True}, reg)
+    assert trailer is not None and trailer["ai_assisted"] is True
+    _, stats = run([commit("from gpt-4 to gpt-4o"), {**commit("x"), "ai_trailer": True}], reg)
+    assert stats.ai_assisted["all with a target"] == [0, 1]

@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from modelbump.registry import load_registry
-from research.validation.targets_check import check_row, hand_target, main, verdict
+from research.validation.targets_check import (
+    check_row,
+    hand_target,
+    less_specific,
+    main,
+    verdict,
+)
 
 COLUMNS = ["n", "url", "model_ids", "date", "message", "is_migration", "from_model", "to_model"]
 
@@ -98,3 +104,29 @@ def test_main_without_labels(tmp_path: Path) -> None:
         writer.writeheader()
         writer.writerow(sample_row(1, "x", "gpt-4", "no", ""))
     assert main(["--dir", str(tmp_path), "--labeled", str(tmp_path / "none.jsonl")]) == 1
+
+
+def test_less_specific_and_hand_not_model() -> None:
+    reg = load_registry()
+    assert less_specific("gemini-2.5", "gemini-2.5-flash")
+    assert less_specific("llama-3.3-70b", "llama-3.3-70b-versatile")
+    assert not less_specific("gpt-4", "gpt-4-turbo")
+    assert not less_specific("gpt-4o", "gpt-4o-mini")
+    assert verdict("gemini-2.5", "gemini-2.5-flash", reg) == "match"
+    assert verdict("current-haiku-alias", "claude-haiku-4-5", reg) == "hand_not_model"
+
+
+def test_check_row_uses_the_hand_left_model() -> None:
+    reg = load_registry()
+    message = (
+        "- Main: claude-sonnet-4-20250514 -> claude-sonnet-4-5\n"
+        "- Synthesis: claude-3-5-haiku-20241022 -> claude-haiku-4-5"
+    )
+    row = sample_row(
+        1, message, "claude-sonnet-4-20250514 claude-3-5-haiku-20241022", "yes", "claude-sonnet-4-5"
+    )
+    out = check_row(row, message, reg)
+    assert out is not None
+    assert out["left_from_hand"] is True
+    assert out["found"] == "claude-sonnet-4-5"
+    assert out["verdict"] == "match"

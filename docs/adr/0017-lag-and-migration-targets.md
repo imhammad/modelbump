@@ -43,3 +43,26 @@ Commit messages say this in many ways: "from X to Y", "X -> Y", "replace X with 
 - The "follows the recommendation" numbers are a lower bound for exact matches, because the provider may have recommended an older model when the commit was made.
 - Tier and generation come from model names only. They are rough labels for the paper's tables, not exact capability or price comparisons.
 - `targets_check.csv` lets anyone read every disagreement between the rules and the hand labels.
+
+## Revision, 13 October 2026: rules tuned on the first sample only
+
+The first run on the full data gave this agreement with the hand labels: 72.2% on the second sample (70 of 97, 95% CI 62.5 to 80.1) and 73.5% on the first (97 of 132). These are the scores of the rules as first written, with neither sample seen.
+
+We then read **only the first sample's** 35 disagreements, plus 20 random commits from the largest odd group (1,364 commits going from `gemini-2.0-flash` to the older `gemini-1.5-flash`). The second sample's disagreements were not read. So the second sample stays a held-out test, and its score after the changes is the one the paper reports, next to the score before them.
+
+**Changes to the rules:**
+
+- `gemini-flash-latest`, `gemini-flash-lite-latest`, `gemini-pro-latest` and `claude-<tier>-latest` count as model IDs.
+- A wildcard such as `gemini-2.5-*` names a family, not a model, so it is not a target.
+- A new pattern, `now_uses`, finds "replaced with Y", "defaults are now Y" and "now uses Y".
+- Another retired model is excluded as a target only when the message *clearly* leaves it ("from X", "X -> ...", "remove X", "X was retired"). The filter's looser "X ... retired within 40 characters" also fired on the new model in "uses Y (X was retired)".
+- A model listed right next to the one left ("remove X, Y", "X and Y") is not a target.
+
+**Changes to the check:**
+
+- A hand label with no model ID in it ("current haiku alias") cannot be compared. It is left out and counted.
+- A hand label that writes only a version the code's target extends ("gemini-2.5" for `gemini-2.5-flash`) counts as the same model, except for GPT names, where `gpt-4` and `gpt-4-turbo` differ.
+- When a commit leaves several models and the hand label names another one than the code chose, the check uses the hand label's model, because it measures the target for a given model left. The number of such rows is printed.
+- Two more lines: of the commits where the code names a target, how often it is the right model and the right provider.
+
+**New fields:** `ai_assisted` (an AI-tool trailer, or a Replit Agent, Lovable or Claude Code marker) and `target_shut_down_before` (the target was already shut down on the commit day). The 20 commits showed that moves to an older model are mostly real: projects went back to `gemini-1.5-flash` because of free-tier quotas, regional blocks or availability, and many were written by coding agents. These fields let the paper measure that.

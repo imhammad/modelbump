@@ -49,14 +49,16 @@ _FAMILIES = (
     r"|(?:meta-)?llama-?\d[\w.-]*|(?:mistral|mixtral|codestral|ministral|magistral)-[\w.-]+"
     r"|deepseek-[\w.-]+|qwen-?\d[\w.-]*|qwq-[\w.-]+|grok-[\w.-]+|command-[\w.-]+"
 )
-MODEL_TOKEN = re.compile(rf"(?<![\w.-])(?:{_FAMILIES})(?![\w-]|\.\w)", re.IGNORECASE)
+# "gemini-1.5-*" names a family, not a model, so an ID followed by "*" does not count.
+MODEL_TOKEN = re.compile(rf"(?<![\w.-])(?:{_FAMILIES})(?![\w*-]|\.\w)", re.IGNORECASE)
 NO_DIGIT_OK = re.compile(
-    r"^(gemini-(pro|ultra|flash)(-vision|-lite)?|deepseek-(chat|coder|reasoner)"
+    r"^(gemini-(pro|ultra|flash|flash-lite)(-vision|-latest)?|claude-(opus|sonnet|haiku)-latest"
+    r"|deepseek-(chat|coder|reasoner)"
     r"|(mistral|codestral)-(large|medium|small|tiny|latest)(-latest)?|command-r(-plus)?"
     r"|(text|chat)-bison|textembedding-gecko|codex-mini-latest|computer-use-preview)$"
 )
 # A model ID in a capture group, for the patterns below.
-MODEL = rf"({_FAMILIES})(?![\w-]|\.\w)"
+MODEL = rf"({_FAMILIES})(?![\w*-]|\.\w)"
 ARROW = r"(?:->|=>|→|➡)"
 
 # Who makes a model that is not in the registry, by the start of its name.
@@ -174,10 +176,38 @@ def same_model(a: str, b: str, registry: Registry) -> bool:
     return same_entry(a, b, registry) or base(a) == base(b)
 
 
+@cache
+def _left_patterns(model_id: str) -> re.Pattern[str]:
+    """Wording that clearly leaves ``model_id``: a narrower set than the filter's.
+
+    The filter also reads "X ... retired" within 40 characters as leaving X,
+    which fires on "uses Y (X was retired)" for the new model Y (ADR 0017).
+    """
+    mid = _id(model_id)
+    patterns = [
+        rf"\bfrom\s+{ADJECTIVES}{QUOTE}{mid}",
+        rf"{mid}{END_QUOTE}\s*(?:{ARROW}|\bto\b)\s*{FILLERS}{QUOTE}{MODEL}",
+        rf"\b(?:replac|swap|switch|migrat|mov|upgrad)\w*\s+{ADJECTIVES}{QUOTE}{mid}{END_QUOTE}"
+        rf"\s+(?:with|to|for|by)\b",
+        rf"\b(?:remov|drop|deprecat|retir|sunset|deactivat)\w*\s+(?:support\s+for\s+)?"
+        rf"{ADJECTIVES}{QUOTE}{mid}",
+        rf"{mid}{END_QUOTE}\s+(?:is|was|has been|will be|being|got)\s+"
+        rf"(?:deprecated|retired|removed|shut ?down|sunset)",
+    ]
+    return re.compile("|".join(f"(?:{p})" for p in patterns), re.IGNORECASE)
+
+
 def moved_away(message: str, model_id: str) -> bool:
-    """True if the message leaves ``model_id`` and never moves into it."""
-    away, into = _direction_patterns(model_id)
-    return away.search(message) is not None and into.search(message) is None
+    """True if the message clearly leaves ``model_id`` and never moves into it."""
+    _, into = _direction_patterns(model_id)
+    return _left_patterns(model_id).search(message) is not None and into.search(message) is None
+
+
+def listed_with(message: str, left: str, token: str) -> bool:
+    """True if ``token`` is listed right next to ``left``: "remove X, Y", "X and Y"."""
+    a, b = _id(left), _id(token)
+    joint = rf"{END_QUOTE}\s*(?:,|\band\b|&|/|\+)\s*{QUOTE}"
+    return re.search(rf"{a}{joint}{b}|{b}{joint}{a}", message, re.IGNORECASE) is not None
 
 
 @cache
@@ -199,6 +229,10 @@ def _target_patterns(left: str) -> tuple[tuple[str, re.Pattern[str]], ...]:
         # "switch default model to gpt-4o" anywhere in the message
         "switch_to": rf"\b(?:switch|migrat|mov|upgrad|updat|chang|bump|set|default|replac)\w*"
         rf"\b[^\n.;]{{0,40}}?\bto\s+{FILLERS}{QUOTE}{MODEL}",
+        # "replaced with gemini-embedding-2", "defaults are now gpt-5.5", "now uses gpt-4o"
+        "now_uses": rf"(?:\b(?:replac|swap)\w*\s+(?:\w+\s+){{0,3}}?with|\b(?:is|are)\s+now"
+        rf"|\bnow\s+(?:uses?|using|runs?|calls?|points?\s+(?:to|at)|defaults?\s+to))\s+"
+        rf"{FILLERS}{QUOTE}{MODEL}",
         # "model: gpt-4-0613 (old) -> gpt-4o"
         "any_arrow": rf"{ARROW}\s*{FILLERS}{QUOTE}{MODEL}",
     }
@@ -209,8 +243,9 @@ def extract_target(message: str, left: str, registry: Registry) -> tuple[str | N
     """The model a commit moves to from ``left``, and the pattern that found it.
 
     Returns (None, None) when the message names no target, for example when it
-    only removes the old model. Another retired model that the message also
-    moves away from is never a target, unless the message also moves into it.
+    only removes the old model. Never a target: another retired model that the
+    message clearly leaves (unless it also moves into it), and a model listed
+    right next to ``left``, as in "remove X, Y".
     """
 
     def usable(token: str) -> bool:
@@ -219,6 +254,7 @@ def extract_target(message: str, left: str, registry: Registry) -> tuple[str | N
             is_model(token)
             and not same_entry(token, left, registry)
             and not (registry.get(token) is not None and moved_away(message, token))
+            and not listed_with(message, left, token)
         )
 
     for name, pattern in _target_patterns(left):
@@ -261,6 +297,17 @@ def change(old: float | None, new: float | None) -> str:
 
 
 TIERS = {"small": 0, "standard": 1, "large": 2}
+# Markers that a coding agent wrote or co-wrote the commit, beyond the filter's
+# AI trailers: Replit Agent, Lovable and Claude Code session links.
+AGENT_MARKER = re.compile(
+    r"^(replit-commit-author:\s*agent|x-lovable-edit-id:|claude-session:)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def ai_assisted(row: dict[str, Any]) -> bool:
+    """True if the commit has an AI-tool trailer or a coding-agent marker."""
+    return bool(row.get("ai_trailer")) or AGENT_MARKER.search(row["message"]) is not None
 
 
 def target_row(row: dict[str, Any], registry: Registry) -> dict[str, Any] | None:
@@ -287,6 +334,8 @@ def target_row(row: dict[str, Any], registry: Registry) -> dict[str, Any] | None
         "follows": follow,
         "target_retired_list": None,
         "target_announced_before": None,
+        "target_shut_down_before": None,
+        "ai_assisted": ai_assisted(row),
         "tier_change": "unknown",
         "generation_change": "unknown",
     }
@@ -300,6 +349,7 @@ def target_row(row: dict[str, Any], registry: Registry) -> dict[str, Any] | None
     if entry is not None:
         first = notice(entry[1])
         out["target_announced_before"] = first is not None and first <= committed
+        out["target_shut_down_before"] = entry[1].shutdown <= committed
     out["tier_change"] = change(TIERS[tier(model_id)], TIERS[tier(target)])
     if family(model_id) == family(target):
         out["generation_change"] = change(version(model_id), version(target))
@@ -320,6 +370,8 @@ class TargetStats:
     follows: dict[str, dict[str, int]] = field(default_factory=dict)
     target_retired_list: int = 0
     target_announced_before: int = 0
+    target_shut_down_before: int = 0
+    ai_assisted: dict[str, list[int]] = field(default_factory=dict)
     tier_change: dict[str, int] = field(default_factory=dict)
     generation_change: dict[str, int] = field(default_factory=dict)
     top_pairs: list[tuple[str, str, int]] = field(default_factory=list)
@@ -355,6 +407,15 @@ def summarise(rows: Sequence[dict[str, Any]], stats: TargetStats, top: int = 15)
     with_target = [r for r in rows if r["target"] is not None]
     stats.target_retired_list = sum(bool(r["target_retired_list"]) for r in with_target)
     stats.target_announced_before = sum(bool(r["target_announced_before"]) for r in with_target)
+    stats.target_shut_down_before = sum(bool(r["target_shut_down_before"]) for r in with_target)
+    groups = {
+        "all with a target": with_target,
+        "generation down": [r for r in with_target if r["generation_change"] == "down"],
+        "generation up": [r for r in with_target if r["generation_change"] == "up"],
+        "tier down": [r for r in with_target if r["tier_change"] == "down"],
+        "other provider": [r for r in with_target if r["same_provider"] is False],
+    }
+    stats.ai_assisted = {k: [sum(r["ai_assisted"] for r in v), len(v)] for k, v in groups.items()}
     stats.tier_change = dict(Counter(r["tier_change"] for r in with_target).most_common())
     stats.generation_change = dict(
         Counter(r["generation_change"] for r in with_target).most_common()
@@ -420,12 +481,19 @@ def report(stats: TargetStats) -> None:
         f"  target already announced for retirement   {pct(stats.target_announced_before, found)}"
         "  (on the commit day)"
     )
+    print(
+        f"  target already shut down                  {pct(stats.target_shut_down_before, found)}"
+        "  (on the commit day)"
+    )
     print("  tier (small, standard, large):")
     for key, count in stats.tier_change.items():
         print(f"    {key:<40}{pct(count, found)}")
     print("  generation, within the same series:")
     for key, count in stats.generation_change.items():
         print(f"    {key:<40}{pct(count, found)}")
+    print("\nAI-assisted commits (AI-tool trailer or coding-agent marker):")
+    for key, (ai, total) in stats.ai_assisted.items():
+        print(f"  {key:<40}{pct(ai, total)}  of {total:,}")
     print("\nMost common switches:")
     for left, target, count in stats.top_pairs:
         print(f"  {left:<34} -> {target:<30}{count:>7,}")

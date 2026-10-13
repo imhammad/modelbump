@@ -13,6 +13,7 @@ Run from the repo root:
 
 import argparse
 import csv
+import re
 import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -21,10 +22,13 @@ from typing import Any
 
 from modelbump.registry import Registry, load_registry
 from research.enrichment.targets import (
+    base,
     clean,
     extract_target,
+    family,
     model_tokens,
     provider_of,
+    same_entry,
     same_model,
 )
 from research.enrichment.timing import left_model
@@ -39,6 +43,7 @@ VERDICTS = (
     "wrong_other_provider",
     "missed",
     "extra",
+    "hand_not_model",
 )
 VERDICT_NAMES = {
     "match": "same model",
@@ -47,6 +52,7 @@ VERDICT_NAMES = {
     "wrong_other_provider": "other model, other provider",
     "missed": "hand has a target, code found none",
     "extra": "hand says none, code found one",
+    "hand_not_model": "hand label names no model ID (left out)",
 }
 
 
@@ -59,13 +65,34 @@ def hand_target(text: str) -> str | None:
     return tokens[0] if tokens else clean(text).replace(" ", "-")
 
 
+def less_specific(hand: str, found: str) -> bool:
+    """True if the hand label wrote only a version that the found ID extends.
+
+    "gemini-2.5" for "gemini-2.5-flash", "llama-3.3-70b" for
+    "llama-3.3-70b-versatile". Not for GPT names, where "gpt-4" and
+    "gpt-4-turbo" are different models.
+    """
+    return (
+        base(found).startswith(base(hand) + "-")
+        and re.search(r"\d+b?$", hand) is not None
+        and family(hand) != "gpt"
+    )
+
+
 def verdict(hand: str | None, found: str | None, registry: Registry) -> str:
-    """How the extracted target compares with the hand label."""
+    """How the extracted target compares with the hand label.
+
+    A hand label that is less specific than the code's target ("gemini-2.5" for
+    "gemini-2.5-flash") counts as the same model. A hand label with no model ID
+    in it ("current haiku alias") cannot be compared and is left out.
+    """
+    if hand is not None and not model_tokens(hand):
+        return "hand_not_model"
     if hand is None:
         return "agree_none" if found is None else "extra"
     if found is None:
         return "missed"
-    if same_model(hand, found, registry):
+    if same_model(hand, found, registry) or less_specific(hand, found):
         return "match"
     same = provider_of(hand, registry) == provider_of(found, registry)
     return "wrong_same_provider" if same else "wrong_other_provider"
@@ -79,7 +106,14 @@ def check_row(row: Mapping[str, str], message: str, registry: Registry) -> dict[
         return None
     commit = {"matched_ids": row["model_ids"].split(), "message": message}
     left = left_model(commit, registry)
-    left_id = left[0] if left else clean(row.get("from_model", ""))
+    left_id = left[0] if left else ""
+    # The check measures the target for a given model left. When the commit
+    # leaves several models and the hand label picked another one, use that one.
+    hand_left = clean(row.get("from_model", ""))
+    from_hand = bool(hand_left) and registry.get(hand_left) is not None
+    from_hand = from_hand and not (left_id and same_entry(left_id, hand_left, registry))
+    if from_hand or not left_id:
+        left_id = hand_left
     found, method = extract_target(message, left_id, registry) if left_id else (None, None)
     hand = hand_target(row["to_model"])
     return {
@@ -87,6 +121,7 @@ def check_row(row: Mapping[str, str], message: str, registry: Registry) -> dict[
         "url": row["url"],
         "from_model": row.get("from_model", ""),
         "left": left_id,
+        "left_from_hand": from_hand,
         "to_model": row["to_model"],
         "hand": hand,
         "found": found,
@@ -130,13 +165,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"No 'yes' row in {sample} has to_model filled in.", file=sys.stderr)
         return 1
 
-    n = len(checked)
     counts = Counter(r["verdict"] for r in checked)
+    n = len(checked) - counts["hand_not_model"]
     print(f"Sample: {sample}")
     print(f"  rows labelled yes: {yes_rows}, with to_model filled in: {n}")
     print(f"  full messages found in {args.labeled}: {len(messages)} of {rows} rows")
+    print(f"  hand label names no model ID (left out): {counts['hand_not_model']}")
+    print(f"  rows compared: {n}")
+    print(f"  model left taken from the hand label: {sum(r['left_from_hand'] for r in checked)}")
     print("\nCode vs hand label:")
-    for v in VERDICTS:
+    for v in VERDICTS[:-1]:
         print(f"  {VERDICT_NAMES[v]:<38}{counts[v]:>5}  {100 * counts[v] / n:5.1f}%")
 
     def line(text: str, good: int, total: int) -> None:
@@ -150,10 +188,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     right = counts["match"] + counts["agree_none"]
     providers = right + counts["wrong_same_provider"]
     with_target = n - counts["agree_none"] - counts["extra"]
+    named = counts["match"] + counts["wrong_same_provider"] + counts["wrong_other_provider"]
+    named += counts["extra"]
     print("\nAgreement:")
     line("same target (or both none)", right, n)
     line("same provider (or both none)", providers, n)
     line("hand has a target: code finds it", counts["match"], with_target)
+    line("code names a target: it is right", counts["match"], named)
+    line(
+        "code names a target: right provider",
+        counts["match"] + counts["wrong_same_provider"],
+        named,
+    )
 
     out = args.dir / "targets_check.csv"
     with out.open("w", newline="", encoding="utf-8") as f:
