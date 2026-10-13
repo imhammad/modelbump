@@ -51,6 +51,8 @@ uv run python -m research.enrichment.targets
 | `lag.stats.json` | | Days from the shutdown: medians, windows and notice use per provider ([lag](../../docs/research/lag.md)) |
 | `targets.jsonl` | 40,876 | One row per `migration_away` commit: the model it moves to and the kind of switch ([targets](../../docs/research/targets.md)) |
 | `targets.stats.json` | | The counts behind the target tables |
+| `files.jsonl` | 400 | A random sample of migration commits with their changed files, each sorted into a kind ([changed files](../../docs/research/files.md)) |
+| `validation_files/` | 100 | Hand check of the file kinds: `has_test` and `has_eval` per commit |
 
 ## Labels
 
