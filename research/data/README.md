@@ -22,6 +22,7 @@ Commits from public GitHub repositories whose message names an LLM model that it
 3. **Filtering** (`research.filtering.filter`, rules v2, [ADR 0014](../../docs/adr/0014-filter-rules-v2.md)). Every candidate keeps one field per rule, so any other definition can be rebuilt from the same file.
 4. **Validation** (`research.validation`, [ADR 0013](../../docs/adr/0013-validation-sample.md), [ADR 0015](../../docs/adr/0015-fresh-sample-for-rules-v2.md)). Two blind, stratified samples labelled by hand.
 5. **Timing** (`research.enrichment.timing`, [ADR 0016](../../docs/adr/0016-migration-timing.md)). Each migration is placed before the notice, between notice and shutdown, or after the shutdown.
+6. **Lag and targets** (`research.analysis.lag`, `research.enrichment.targets`, [ADR 0017](../../docs/adr/0017-lag-and-migration-targets.md)). How many days before or after the shutdown each migration came, and which model it moved to.
 
 To rebuild everything (the mining step takes about a day because of GitHub's rate limits):
 
@@ -29,6 +30,8 @@ To rebuild everything (the mining step takes about a day because of GitHub's rat
 uv run python -m research.mining.miner --end 2026-10-08
 uv run python -m research.filtering.filter
 uv run python -m research.enrichment.timing
+uv run python -m research.analysis.lag --retired-by 2026-07-11
+uv run python -m research.enrichment.targets
 ```
 
 ## Files
@@ -45,6 +48,9 @@ uv run python -m research.enrichment.timing
 | `validation_v2_adjudicated/` | 200 | Second sample, adjudicated labels, plus a second person's blind labels on rows 1 to 100 (`sample_b.csv`) |
 | `timing.jsonl` | 40,876 | One row per `migration_away` commit: model left, its dates, and the phase |
 | `timing_90d.jsonl` | 40,876 | The same with `--retired-by 2026-07-11` (models shut down at least 90 days before the data ends) |
+| `lag.stats.json` | | Days from the shutdown: medians, windows and notice use per provider ([lag](../../docs/research/lag.md)) |
+| `targets.jsonl` | 40,876 | One row per `migration_away` commit: the model it moves to and the kind of switch ([targets](../../docs/research/targets.md)) |
+| `targets.stats.json` | | The counts behind the target tables |
 
 ## Labels
 

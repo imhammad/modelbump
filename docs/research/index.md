@@ -17,6 +17,8 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 - [Filtering: which candidates are migrations](filtering.md)
 - [Validation: labelling a sample by hand](validation.md)
 - [Timing: when did projects migrate?](timing.md)
+- [Lag: how long before or after the shutdown?](lag.md)
+- [Targets: what do projects migrate to?](targets.md)
 - [Dataset card](https://github.com/imhammad/modelbump/blob/main/research/data/README.md): what the migration dataset holds, how it was built, its quality and limits
 
 ## Key prior work
