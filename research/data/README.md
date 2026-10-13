@@ -34,6 +34,7 @@ uv run python -m research.analysis.lag --retired-by 2026-07-11
 uv run python -m research.enrichment.targets
 uv run python -m research.enrichment.files
 uv run python -m research.analysis.paper
+uv run python -m research.release.export
 ```
 
 ## Files
