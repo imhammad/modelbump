@@ -70,6 +70,19 @@ def test_draw_then_score(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     printed = capsys.readouterr().out
     assert "has_test (4 commits labelled)" in printed
     assert "agreement      4 of 4 = 100.0%" in printed
+    assert "the rules when the sheet was drawn" in printed
+
+    # The rules change: the code now finds an evaluation in s1.
+    rows[1]["touches_eval"] = True
+    files.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert main(["--files", str(files), "--dir", str(out), "--score", "--current"]) == 0
+    printed = capsys.readouterr().out
+    assert "the rules as they are now" in printed
+    assert "both yes 0, both no 3, code only 1, hand only 0" in printed
+    assert (
+        main(["--files", str(tmp_path / "gone.jsonl"), "--dir", str(out), "--score", "--current"])
+        == 1
+    )
 
 
 def test_main_without_files(tmp_path: Path) -> None:

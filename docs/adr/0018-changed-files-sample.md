@@ -29,3 +29,21 @@ Commit messages cannot answer this. The changed files can, but only GitHub's RES
 - RQ4 describes migration commits, not whole migrations. A project may add tests in a later commit. The paper says so.
 - About 16% of `migration_away` commits are not real migrations ([ADR 0015](0015-fresh-sample-for-rules-v2.md)). The hand check lets those be spotted, and the `note` column records them.
 - Path rules miss tests kept in unusual places. The hand check measures how many.
+
+## Revision, 13 October 2026
+
+The hand check of 100 commits (seed 2029) was scored against the rules as they were when the sheet was drawn:
+
+| Question | Agreement | Kappa | Hand "yes" | Code found | Code "yes", hand "no" |
+|----------|-----------|-------|------------|------------|-----------------------|
+| `has_test` | 98 of 100 (93.0 to 99.4) | 0.93 | 19 | 17 | 0 |
+| `has_eval` | 96 of 100 (90.2 to 98.4) | 0.32 | 5 | 1 | 0 |
+
+The code never said "yes" where the hand said "no". The kappa for `has_eval` is low because evaluations are rare: with 5 "yes" answers in 100, each miss costs a lot of kappa. The five disagreeing commits were:
+
+- **A PHPUnit test in `Tests/Unit/...Test.php`, missed.** Test folders were matched only in lower case, and PHP test files were not listed. Fixed: test folder names now match in any case, and `*Test.php` is a test.
+- **`study/lib/llm_judge.py`, an LLM-as-judge evaluation, missed.** Fixed: `judge` and `judges` now mark an evaluation file, like `eval`.
+- **Two commits in repositories that are themselves benchmarks** (`verify.py` in a Lean proof benchmark, `baselines/registry.py` in a citation benchmark). No path rule can tell that a whole repository is an evaluation, so these stay missed.
+- **Configuration and result files under `test-corpus/`** in an embedding search project. The hand said both test and evaluation. One case, so the rules were not changed for it.
+
+These fixes were made after seeing the labels, so this sample no longer tests them blind. The paper reports the scores above, from before the change, as the validation, and the rescore with `--score --current` only as a check that the fixes work. For evaluations, the code's rate is a lower bound, and the paper reports the hand rate on the 100 commits (5 of 100, 2.2 to 11.2) next to it.

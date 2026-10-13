@@ -7,10 +7,15 @@ files but not what the code decided. The code's answers go to
 
 With ``--score``, compares the hand labels with the code's answers: agreement,
 Cohen's kappa, and how many of the code's "yes" and "no" answers were right.
+The code's answers come from ``sample_key.csv``, frozen when the sheet was
+drawn. Add ``--current`` to take them from ``files.jsonl`` instead, after the
+file rules changed and research.enrichment.files was run again. Report both:
+the frozen score is the one measured before the rules saw the labels.
 
 Run from the repo root:
     uv run python -m research.validation.files_check
     uv run python -m research.validation.files_check --score
+    uv run python -m research.validation.files_check --score --current
 """
 
 import argparse
@@ -82,6 +87,19 @@ def read_key(path: Path) -> dict[str, dict[int, str]]:
     return key
 
 
+def read_current(files: Path, key_path: Path) -> dict[str, dict[int, str]]:
+    """The code's answers from files.jsonl as it is now, for the sheet's commits."""
+    with key_path.open(newline="", encoding="utf-8") as f:
+        shas = {int(row["n"]): row["sha"] for row in csv.DictReader(f)}
+    rows = {r["sha"]: r for r in read_jsonl(files) if r.get("found")}
+    current: dict[str, dict[int, str]] = {q: {} for q in QUESTIONS}
+    for n, sha in shas.items():
+        if sha in rows:
+            for q, column in QUESTIONS.items():
+                current[q][n] = "yes" if rows[sha][column] else "no"
+    return current
+
+
 def compare(hand: Mapping[int, str], code: Mapping[int, str]) -> dict[str, Any]:
     """Agreement, kappa, and the confusion counts for one question."""
     shared = sorted(set(hand) & set(code))
@@ -100,16 +118,28 @@ def compare(hand: Mapping[int, str], code: Mapping[int, str]) -> dict[str, Any]:
     }
 
 
-def score(out_dir: Path) -> int:
-    """Print how the code's answers compare with the hand labels."""
+def score(out_dir: Path, files: Path | None = None) -> int:
+    """Print how the code's answers compare with the hand labels.
+
+    The code's answers come from the key, or from ``files`` when it is given.
+    """
     sheet, key_path = out_dir / "sample.csv", out_dir / "sample_key.csv"
     if not sheet.exists() or not key_path.exists():
         print(f"{sheet} or {key_path} not found. Draw the sheet first.", file=sys.stderr)
         return 1
-    hand, code = read_hand(sheet), read_key(key_path)
+    if files is not None and not files.exists():
+        print(f"{files} not found. Run research.enrichment.files first.", file=sys.stderr)
+        return 1
+    hand = read_hand(sheet)
     if not any(hand.values()):
         print(f"No answers in {sheet} yet (has_test and has_eval: yes or no).", file=sys.stderr)
         return 1
+    if files is None:
+        code = read_key(key_path)
+        print(f"Code answers from {key_path} (the rules when the sheet was drawn).")
+    else:
+        code = read_current(files, key_path)
+        print(f"Code answers from {files} (the rules as they are now).")
     for q in QUESTIONS:
         c = compare(hand[q], code[q])
         if not c["n"]:
@@ -137,11 +167,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--files", type=Path, default=Path("research/data/files.jsonl"))
     parser.add_argument("--dir", type=Path, default=Path("research/data/validation_files"))
     parser.add_argument("--score", action="store_true", help="Score the labelled sheet.")
+    parser.add_argument(
+        "--current", action="store_true", help="With --score: the code's answers from --files."
+    )
     parser.add_argument("--size", type=int, default=SIZE)
     parser.add_argument("--seed", type=int, default=SEED)
     args = parser.parse_args(argv)
     if args.score:
-        return score(args.dir)
+        return score(args.dir, args.files if args.current else None)
     if not args.files.exists():
         print(f"{args.files} not found. Run research.enrichment.files first.", file=sys.stderr)
         return 1

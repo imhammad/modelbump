@@ -26,8 +26,8 @@ Options: `--sample` (default 400), `--seed` (default 2028), `--interval` (second
 
 | Kind | Examples |
 |------|----------|
-| `eval` | `evals/`, `benchmarks/`, `golden.jsonl`, `promptfooconfig.yaml`, `llm_eval.py` |
-| `test` | `tests/`, `test_x.py`, `x_test.go`, `x.test.ts`, `x.spec.js`, `x_spec.rb`, `conftest.py` |
+| `eval` | `evals/`, `benchmarks/`, `golden.jsonl`, `promptfooconfig.yaml`, `llm_eval.py`, `llm_judge.py` |
+| `test` | `tests/` or `Tests/`, `test_x.py`, `x_test.go`, `x.test.ts`, `x.spec.js`, `x_spec.rb`, `XTest.php`, `conftest.py` |
 | `prompt` | `prompts/`, `x.prompt`, `system_prompt.txt` |
 | `ci` | `.github/workflows/`, `.gitlab-ci.yml` |
 | `docs` | `*.md`, `docs/`, `README`, `CHANGELOG` |
@@ -73,3 +73,11 @@ uv run python -m research.validation.files_check --score
 ```
 
 It prints, for each question, the agreement with a 95% interval, Cohen's kappa, and how many of your "yes" answers the code found.
+
+The code's answers come from `sample_key.csv`, frozen when the sheet was drawn. If the file rules change after you have seen the disagreements, run `research.enrichment.files` again (it reads the cache, so it makes no requests) and score against the new answers:
+
+```
+uv run python -m research.validation.files_check --score --current
+```
+
+Report both scores. The first was measured before the rules saw your labels; the second only shows that the fixes work. The results of the first hand check are in [ADR 0018](../adr/0018-changed-files-sample.md#revision-13-october-2026).

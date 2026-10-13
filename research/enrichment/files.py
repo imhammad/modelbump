@@ -52,15 +52,15 @@ SEED = 2028
 
 KINDS = ("eval", "test", "prompt", "ci", "docs", "config", "code", "other")
 _EVAL = re.compile(
-    r"(^|/)(evals?|evaluations?|benchmarks?|golden|goldens|promptfoo)(/|$)"
-    r"|(^|[/_.-])(evals?|evaluation|benchmark|golden|promptfoo(config)?)([_.-]|$)"
+    r"(^|/)(evals?|evaluations?|benchmarks?|golden|goldens|promptfoo|judges?)(/|$)"
+    r"|(^|[/_.-])(evals?|evaluation|benchmark|golden|promptfoo(config)?|judges?)([_.-]|$)"
     r"|(deepeval|ragas|langsmith_eval|lm_eval)",
     re.IGNORECASE,
 )
 _TEST = re.compile(
-    r"(^|/)(tests?|__tests__|specs?|testing|e2e|cypress|playwright)(/)"
+    r"(^|/)(?i:tests?|__tests__|specs?|testing|e2e|cypress|playwright)(/)"
     r"|(^|/)test_[^/]+$|_test\.(py|go|rs|exs?)$|\.(test|spec)\.[cm]?[jt]sx?$"
-    r"|(Test|Tests|Spec)\.(java|kt|cs|swift|scala)$|_spec\.rb$|(^|/)conftest\.py$",
+    r"|(Test|Tests|Spec)\.(java|kt|cs|swift|scala|php)$|_spec\.rb$|(^|/)conftest\.py$",
 )
 _PROMPT = re.compile(
     r"(^|/)prompts?(/|$)|\.prompt(\.\w+)?$|(^|/)[^/]*prompt[^/]*\.(txt|md|j2|jinja2?|ya?ml|json)$",
