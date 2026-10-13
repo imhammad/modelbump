@@ -195,7 +195,11 @@ class CommitFilesClient:
         }
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        self._http = httpx.Client(headers=headers, transport=transport, timeout=30.0)
+        # A renamed or transferred repository answers with a 301 to its new
+        # address; follow it (same host, so the token is kept).
+        self._http = httpx.Client(
+            headers=headers, transport=transport, timeout=30.0, follow_redirects=True
+        )
         self._sleep = sleep
         self._clock = clock
         self._min_interval = min_interval

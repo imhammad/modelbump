@@ -259,3 +259,25 @@ def test_client_gives_up(tmp_path: Path) -> None:
         always(503).files("a/b", "x")
     with pytest.raises(RateLimitError):
         always(429).files("a/b", "x")
+
+
+def test_client_follows_a_renamed_repository(tmp_path: Path) -> None:
+    fake = FakeCommits({"x": [gh_file("a.py")]})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith("/repos/old/name/"):
+            new = str(request.url).replace("/repos/old/name/", "/repositories/123/")
+            return httpx.Response(301, headers={"location": new})
+        assert request.headers["authorization"] == "Bearer token"
+        return fake.handler(request)
+
+    client = CommitFilesClient(
+        tmp_path / "cache",
+        "token",
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _: None,
+        clock=lambda: 0.0,
+        min_interval=0.0,
+    )
+    status, files = client.files("old/name", "x")
+    assert status == 200 and len(files) == 1
