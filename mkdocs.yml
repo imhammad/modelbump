@@ -70,6 +70,7 @@ nav:
       - adr/0016-migration-timing.md
       - adr/0017-lag-and-migration-targets.md
       - adr/0018-changed-files-sample.md
+      - adr/0019-paper-numbers-from-one-script.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
@@ -91,3 +92,4 @@ nav:
       - research/lag.md
       - research/targets.md
       - research/files.md
+      - research/paper.md

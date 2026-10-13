@@ -297,6 +297,16 @@ def change(old: float | None, new: float | None) -> str:
 
 
 TIERS = {"small": 0, "standard": 1, "large": 2}
+# Models shut down before the registry's sources were copied, so they are not
+# in it (ADR 0017, second revision). Used only to tell whether a migration's
+# target was already shut down on the commit day.
+# Source: https://ai.google.dev/gemini-api/docs/changelog, 29 September 2025.
+EARLIER_SHUTDOWNS = {
+    "gemini-1.5-pro": date(2025, 9, 29),
+    "gemini-1.5-flash": date(2025, 9, 29),
+    "gemini-1.5-flash-8b": date(2025, 9, 29),
+}
+
 # Markers that a coding agent wrote or co-wrote the commit, beyond the filter's
 # AI trailers: Replit Agent, Lovable and Claude Code session links.
 AGENT_MARKER = re.compile(
@@ -350,6 +360,8 @@ def target_row(row: dict[str, Any], registry: Registry) -> dict[str, Any] | None
         first = notice(entry[1])
         out["target_announced_before"] = first is not None and first <= committed
         out["target_shut_down_before"] = entry[1].shutdown <= committed
+    elif base(target) in EARLIER_SHUTDOWNS:
+        out["target_shut_down_before"] = EARLIER_SHUTDOWNS[base(target)] <= committed
     out["tier_change"] = change(TIERS[tier(model_id)], TIERS[tier(target)])
     if family(model_id) == family(target):
         out["generation_change"] = change(version(model_id), version(target))
@@ -371,6 +383,7 @@ class TargetStats:
     target_retired_list: int = 0
     target_announced_before: int = 0
     target_shut_down_before: int = 0
+    target_shut_down_earlier: int = 0  # of those, models shut down before the registry
     ai_assisted: dict[str, list[int]] = field(default_factory=dict)
     tier_change: dict[str, int] = field(default_factory=dict)
     generation_change: dict[str, int] = field(default_factory=dict)
@@ -408,6 +421,9 @@ def summarise(rows: Sequence[dict[str, Any]], stats: TargetStats, top: int = 15)
     stats.target_retired_list = sum(bool(r["target_retired_list"]) for r in with_target)
     stats.target_announced_before = sum(bool(r["target_announced_before"]) for r in with_target)
     stats.target_shut_down_before = sum(bool(r["target_shut_down_before"]) for r in with_target)
+    stats.target_shut_down_earlier = sum(
+        bool(r["target_shut_down_before"]) and not r["target_retired_list"] for r in with_target
+    )
     groups = {
         "all with a target": with_target,
         "generation down": [r for r in with_target if r["generation_change"] == "down"],
@@ -484,6 +500,10 @@ def report(stats: TargetStats) -> None:
     print(
         f"  target already shut down                  {pct(stats.target_shut_down_before, found)}"
         "  (on the commit day)"
+    )
+    print(
+        f"    of which shut down before the registry   {pct(stats.target_shut_down_earlier, found)}"
+        "  (Gemini 1.5, from Google's changelog)"
     )
     print("  tier (small, standard, large):")
     for key, count in stats.tier_change.items():

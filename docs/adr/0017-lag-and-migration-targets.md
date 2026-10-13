@@ -66,3 +66,9 @@ We then read **only the first sample's** 35 disagreements, plus 20 random commit
 - Two more lines: of the commits where the code names a target, how often it is the right model and the right provider.
 
 **New fields:** `ai_assisted` (an AI-tool trailer, or a Replit Agent, Lovable or Claude Code marker) and `target_shut_down_before` (the target was already shut down on the commit day). The 20 commits showed that moves to an older model are mostly real: projects went back to `gemini-1.5-flash` because of free-tier quotas, regional blocks or availability, and many were written by coding agents. These fields let the paper measure that.
+
+## Revision, 13 October 2026: targets shut down before the registry
+
+Google's changelog says `gemini-1.5-pro`, `gemini-1.5-flash` and `gemini-1.5-flash-8b` were shut down on 29 September 2025 ([source](https://ai.google.dev/gemini-api/docs/changelog)). They are not in the registry, which copies the current deprecation pages, so a migration *to* them was never counted as moving to a model that was already shut down. About 1,340 commits move from `gemini-2.0-flash` to `gemini-1.5-flash`, most of them in 2026.
+
+`research.enrichment.targets` now has a short list, `EARLIER_SHUTDOWNS`, of models shut down before the registry's sources were copied, with this source. It is used **only** for `target_shut_down_before`, never to find or label migrations, so the dataset itself does not change. The stats file counts these separately as `target_shut_down_earlier`.

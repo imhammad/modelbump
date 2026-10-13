@@ -357,3 +357,19 @@ def test_ai_assisted_and_shut_down_targets() -> None:
     assert trailer is not None and trailer["ai_assisted"] is True
     _, stats = run([commit("from gpt-4 to gpt-4o"), {**commit("x"), "ai_trailer": True}], reg)
     assert stats.ai_assisted["all with a target"] == [0, 1]
+
+
+def test_targets_shut_down_before_the_registry() -> None:
+    reg = registry()
+    ids = ("gemini-2.0-flash",)
+    late = target_row(commit("switch from gemini-2.0-flash to gemini-1.5-flash-002", ids), reg)
+    assert late is not None
+    assert late["target"] == "gemini-1.5-flash-002"
+    assert late["target_retired_list"] is False
+    assert late["target_shut_down_before"] is True
+    early = target_row(
+        commit("switch from gemini-2.0-flash to gemini-1.5-flash", ids, day="2025-06-01"), reg
+    )
+    assert early is not None and early["target_shut_down_before"] is False
+    _, stats = run([commit("switch from gemini-2.0-flash to gemini-1.5-flash", ids)], reg)
+    assert (stats.target_shut_down_before, stats.target_shut_down_earlier) == (1, 1)

@@ -24,3 +24,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0016](0016-migration-timing.md) | Place each migration on its model's retirement timeline | Accepted |
 | [0017](0017-lag-and-migration-targets.md) | Measure how late projects migrate, and what they migrate to | Accepted |
 | [0018](0018-changed-files-sample.md) | Check what migration commits change on a random sample of 400 | Accepted |
+| [0019](0019-paper-numbers-from-one-script.md) | Build every number, table and figure in the paper with one script | Accepted |

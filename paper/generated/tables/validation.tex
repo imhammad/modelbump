@@ -1,0 +1,17 @@
+\begin{tabular}{lrrrr}
+\toprule
+Check & Rows & Agreement & 95\% CI & $\kappa$ \\
+\midrule
+Migration label: precision & 100 & 84.0\% & 75.6--89.9 & -- \\
+Migration label: second rater & 100 & & & 0.94 \\
+\midrule
+Target: same as hand (before tuning) & 97 & 72.2\% & 62.5--80.1 & -- \\
+Target: same as hand & 96 & 76.0\% & 66.6--83.5 & -- \\
+Target named by the code: right model & 80 & 90.0\% & 81.5--94.8 & -- \\
+\midrule
+File touches a test (before the fix) & 100 & 98.0\% & 93.0--99.4 & 0.93 \\
+File touches a test (after the fix) & 100 & 99.0\% & 94.6--99.8 & 0.97 \\
+File touches an evaluation (before the fix) & 100 & 96.0\% & 90.2--98.4 & 0.32 \\
+File touches an evaluation (after the fix) & 100 & 97.0\% & 91.5--99.0 & 0.56 \\
+\bottomrule
+\end{tabular}
