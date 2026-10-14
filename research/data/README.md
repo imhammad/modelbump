@@ -57,7 +57,7 @@ uv run python -m research.release.export
 | `targets.stats.json` | | The counts behind the target tables |
 | `files.jsonl` | 400 | A random sample of migration commits with their changed files, each sorted into a kind ([changed files](../../docs/research/files.md)) |
 | `validation_files/` | 100 | Hand check of the file kinds: `has_test` and `has_eval` per commit |
-| `robustness.json` | | RQ1 and RQ2 repeated with other labels, without incompletely searched models, with intervals by repository, by phase in the hand sample, and OpenAI against Anthropic ([robustness](../../docs/research/robustness.md)) |
+| `robustness.json` | | RQ1 and RQ2 repeated with other labels, with days cut at 1,000 results weighted up, with intervals by repository, by phase in the hand sample, and OpenAI against Anthropic ([robustness](../../docs/research/robustness.md)) |
 
 ## Labels
 

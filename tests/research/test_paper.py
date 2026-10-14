@@ -95,11 +95,28 @@ def robustness_result() -> dict[str, Any]:
             "no_ai": summary(7_100, 11_500, 12),
         },
         "first_per_repo": summary(6_742, 10_947, 8),
-        "incomplete": {
-            "models": {"gpt-4-0613": ["searched from the notice"]},
-            "exact": summary(7_500, 12_000, 11),
-            "google": summary(50, 100, 3),
-            "google_without": summary(0, 0, math.nan),
+        "google": summary(50, 100, 3),
+        "truncation": {
+            "models": {
+                "gpt-4-0613": ["day over 1,000 results", "searched from the notice"],
+                "o1-mini": ["day over 1,000 results"],
+            },
+            "late_searched_rows": 0,
+            "days": 61,
+            "days_without_total": 0,
+            "days_after_shutdown": 10,
+            "days_before_shutdown": 51,
+            "missing_results": 120_000,
+            "largest_total": 9_000,
+            "exact": {
+                **summary(7_619, 12_244, 11),
+                "share": 0.615,
+                "low": 0.60,
+                "high": 0.63,
+                "reweighted": 300,
+                "weighted_rows": 13_000.0,
+            },
+            "google": {**summary(0, 0, math.nan), "low": None, "high": None},
         },
         "repo_bootstrap": {
             "reps": 2_000,
@@ -277,8 +294,9 @@ def test_build(tmp_path: Path) -> None:
     assert n["ExactDays"] != "--"
     assert (n["AfterLateRepoLow"], n["AfterLateRepoHigh"]) == ("60.0", "64.0")
     assert n["AfterKimLabel"] == "63.6"
-    assert n["IncompleteExactRows"] == "244"
-    assert n["AfterGoogleComplete"] == "--"
+    assert (n["AfterReweighted"], n["AfterReweightedLow"]) == ("61.5", "60.0")
+    assert (n["CutDays"], n["CutModels"], n["CutMissing"]) == ("61", "2", "120,000")
+    assert n["AfterGoogleReweighted"] == "--"
     assert n["PrecisionAfter"] == "88.9"
     assert n["SampleTrueAfter"] == "47.0"
     assert (n["CliffAll"], n["CliffAllP"], n["CliffAllSize"]) == (
@@ -303,7 +321,7 @@ def test_build(tmp_path: Path) -> None:
         "targets.pdf",
         "changed-files.pdf",
     }
-    assert "Google, without" not in paper.tables["robustness.tex"]  # no rows
+    assert "Google, cut days" not in paper.tables["robustness.tex"]  # no rows
     for table in paper.tables.values():
         assert table.startswith("\\begin{tabular}") and "\\bottomrule" in table
 

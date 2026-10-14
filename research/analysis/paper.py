@@ -465,7 +465,6 @@ ROBUST_ROWS = (
     (("labels", "kim_label"), "KimLabel", "Kim's rules (\\texttt{migration})"),
     (("labels", "strict"), "Strict", "Strict rules (\\texttt{migration\\_strict})"),
     (("labels", "no_ai"), "NoAI", "Without AI-assisted commits"),
-    (("incomplete", "exact"), "Complete", "Without models searched incompletely"),
 )
 
 
@@ -528,20 +527,42 @@ def robustness(paper: Paper, inputs: dict[str, Any]) -> None:
         paper.count(f"After{name}Total", s["rows"])
         paper.put(f"{name}Days", days(s["median_days"]), s["median_days"])
         lines.append(line(text, s, s["low"], s["high"], spread(s)))
-    incomplete = r["incomplete"]
-    paper.count("IncompleteModels", len(incomplete["models"]))
-    paper.count("IncompleteExactRows", head["rows"] - incomplete["exact"]["rows"])
+    cut = r["truncation"]
+
+    def weighted(name: str, s: dict[str, Any]) -> None:
+        for suffix, key in (("", "share"), ("Low", "low"), ("High", "high")):
+            paper.put(f"After{name}{suffix}", pct(known(s[key])), s[key])
+        paper.put(f"{name}Days", days(s["median_days"]), s["median_days"])
+
+    weighted("Reweighted", cut["exact"])
+    lines.append(
+        line(
+            "Days cut at 1,000 results weighted up",
+            cut["exact"],
+            known(cut["exact"]["low"]),
+            known(cut["exact"]["high"]),
+            spread(cut["exact"]),
+        )
+    )
+    paper.count("CutDays", cut["days"])
+    paper.count("CutDaysBefore", cut["days_before_shutdown"])
+    paper.count("CutDaysAfter", cut["days_after_shutdown"])
+    paper.count("CutDaysNoTotal", cut["days_without_total"])
+    paper.count("CutMissing", cut["missing_results"])
+    paper.count("CutRowsReweighted", cut["exact"]["reweighted"])
+    paper.count("CutModels", sum("day over 1,000 results" in why for why in cut["models"].values()))
+    paper.count("LateSearchedRows", cut["late_searched_rows"])
     lines.append("\\midrule")
-    for key, name, text in (
-        ("google", "", "Google (earliest dates)"),
-        ("google_without", "GoogleComplete", "Google, without models searched incompletely"),
-    ):
-        s = incomplete[key]
-        if name:
-            paper.share(f"After{name}", s["after"], s["rows"])
-            paper.count(f"After{name}Total", s["rows"])
-        if s["rows"]:
-            lines.append(line(text, s, s["low"], s["high"], spread(s)))
+    google = r["google"]
+    lines.append(
+        line("Google (earliest dates)", google, google["low"], google["high"], spread(google))
+    )
+    weighted("GoogleReweighted", cut["google"])
+    if cut["google"]["rows"]:
+        g = cut["google"]
+        lines.append(
+            line("Google, cut days weighted up", g, known(g["low"]), known(g["high"]), spread(g))
+        )
     paper.tables["robustness.tex"] = tabular(
         "lrrrr",
         "Migrations counted & Migrations & After the shutdown & 95\\% CI & Median days (95\\% CI)",

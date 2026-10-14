@@ -37,3 +37,9 @@ One command, `uv run python -m research.analysis.robustness`, repeats the RQ1 he
 - Each doubt has one row or number in the paper, so the threats section can cite the result instead of arguing.
 - The hand-sample check is coarse: the 100 `migration_away` commits split into two groups of roughly 50, with intervals of about ±13 points, so it can rule out only a large bias.
 - With thousands of rows, almost any difference has a small p-value, so the paper reports Cliff's delta as the size of the difference.
+
+## Revision, 14 October 2026
+
+The first run of check 1 dropped every model with a cut day. That removed 34 models and 7,410 of the 12,244 headline migrations, among them the most used models, and the share after the shutdown rose from 62.2% to 76.1%. The rise mixes two things, the missed commits and the change in which models are counted, so it cannot be read as the size of the search gap.
+
+Check 1 now keeps every model and weights the missed commits back in. For each window GitHub cut, the miner's cache holds the total it reported. A migration found on such a day counts total/1,000 times, on the assumption that the 1,000 results shown are like the rest. The intervals come from resampling repositories, as in check 2. The output also gives how many cut days fall before and after each model's shutdown, and how many headline migrations leave one of the five IDs searched only from their notice: none of their models was shut down by 11 July 2026 except `gemini-2.0-flash`, which is Google's.

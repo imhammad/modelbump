@@ -5,9 +5,11 @@ check repeats the headline (OpenAI and Anthropic migrations away from models
 shut down by 2026-07-11, so every model has at least 90 days of data after its
 shutdown) with one thing changed:
 
-1. Without the models whose search may have missed commits: the five IDs
-   searched only from shortly before their notice (ADR 0011), and every ID
-   with a day of more than 1,000 results, which GitHub cuts at 1,000.
+1. With the days GitHub cut at 1,000 results weighted up: each migration
+   found on such a day counts total/1,000 times, using the total GitHub
+   reported for that day (from the miner's cache). Also counts how many
+   headline migrations leave the five IDs searched only from shortly before
+   their notice (ADR 0011).
 2. With 95% intervals from resampling whole repositories, because commits
    from the same repository are not independent.
 3. With other labels: Kim's rules (``migration``), the strict rules, and
@@ -27,6 +29,7 @@ import csv
 import json
 import math
 import random
+import re
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date
@@ -38,6 +41,7 @@ from research.analysis.lag import Spread
 from research.enrichment import timing
 from research.enrichment.timing import EXACT, first_per_repo
 from research.filtering.filter import read_jsonl
+from research.mining.github_search import MAX_RESULTS, _cache_key
 from research.validation import score as filter_score
 from research.validation.score import wilson
 
@@ -113,17 +117,144 @@ def incomplete_searches(
     return {model_id: sorted(why) for model_id, why in sorted(reasons.items())}
 
 
-def without_models(
-    rows: Iterable[dict[str, Any]], ids: Iterable[str], registry: Registry
+def canonical(model_id: str, registry: Registry) -> str:
+    """The registry ID that ``model_id`` (an ID or alias) points to."""
+    entry = registry.get(model_id)
+    return entry[1].id if entry else model_id
+
+
+def late_searched_rows(
+    rows: Iterable[dict[str, Any]], candidate_stats: Mapping[str, Any], registry: Registry
+) -> int:
+    """How many rows leave a model searched only from its notice, or too big to narrow."""
+    late = {
+        canonical(m, registry)
+        for m in [
+            *candidate_stats.get("focused_starts", {}),
+            *candidate_stats.get("too_big_without_notice", []),
+        ]
+    }
+    return sum(canonical(r["model_id"], registry) in late for r in rows)
+
+
+WINDOW = re.compile(r"committer-date:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})")
+
+
+def truncated_days(
+    candidate_stats: Mapping[str, Any], cache: Path, registry: Registry
 ) -> list[dict[str, Any]]:
-    """``rows`` minus those moving away from any of ``ids`` (or one of their aliases)."""
-    dropped = set(ids)
+    """Every search window GitHub cut at 1,000 results, with the total it reported.
 
-    def model(row: dict[str, Any]) -> str:
-        entry = registry.get(row["model_id"])
-        return entry[1].id if entry else str(row["model_id"])
+    The total comes from the first page of the search in the miner's cache,
+    so no request is made. It is None when that page is not in the cache.
+    """
+    out = []
+    for query in candidate_stats.get("truncated_windows", []):
+        parts = query.split('"')
+        window = WINDOW.search(query)
+        if len(parts) < 3 or window is None:
+            continue
+        path = cache / f"{_cache_key(query, 1)}.json"
+        total = None
+        if path.exists():
+            record = json.loads(path.read_text(encoding="utf-8"))
+            total = int(record["response"]["total_count"])
+        entry = registry.get(parts[1])
+        out.append(
+            {
+                "model": canonical(parts[1], registry),
+                "start": window.group(1),
+                "end": window.group(2),
+                "total": total,
+                "after_shutdown": None
+                if entry is None
+                else window.group(1) >= entry[1].shutdown.isoformat(),
+            }
+        )
+    return out
 
-    return [r for r in rows if model(r) not in dropped]
+
+def weights(
+    rows: Sequence[dict[str, Any]], days: Sequence[dict[str, Any]], registry: Registry
+) -> list[float]:
+    """One weight per row: total/1,000 if it was found on a cut day of its model, else 1."""
+    cut: dict[str, list[tuple[str, str, float]]] = {}
+    for d in days:
+        if d["total"]:
+            weight = max(1.0, d["total"] / MAX_RESULTS)
+            cut.setdefault(d["model"], []).append((d["start"], d["end"], weight))
+    out = []
+    for r in rows:
+        day = r["committed"]
+        found = [
+            w
+            for start, end, w in cut.get(canonical(r["model_id"], registry), [])
+            if start <= day <= end
+        ]
+        out.append(max(found, default=1.0))
+    return out
+
+
+def weighted_median(days: Sequence[float], weights: Sequence[float]) -> float:
+    """The smallest value at which the cumulative weight reaches half the total."""
+    pairs = sorted(zip(days, weights, strict=True))
+    if not pairs:
+        return math.nan
+    half = sum(weights) / 2
+    running = 0.0
+    for value, weight in pairs:
+        running += weight
+        if running >= half:
+            return value
+    return pairs[-1][0]
+
+
+def weighted_summary(
+    rows: Sequence[dict[str, Any]], row_weights: Sequence[float], reps: int = REPS, seed: int = SEED
+) -> dict[str, Any]:
+    """Weighted share after the shutdown and median days, with repository-bootstrap intervals."""
+    by_repo: dict[str, list[tuple[int, float]]] = {}
+    for r, w in zip(rows, row_weights, strict=True):
+        by_repo.setdefault(r["repo"], []).append((r["days_from_shutdown"], w))
+    clusters = [by_repo[repo] for repo in sorted(by_repo)]
+
+    def stats(pairs: Sequence[tuple[int, float]]) -> tuple[float, float]:
+        total = sum(w for _, w in pairs)
+        after = sum(w for d, w in pairs if d >= 0)
+        median = weighted_median([d for d, _ in pairs], [w for _, w in pairs])
+        return (after / total if total else math.nan), median
+
+    pairs = [p for cluster in clusters for p in cluster]
+    share, median = stats(pairs)
+    out: dict[str, Any] = {
+        "rows": len(rows),
+        "reweighted": sum(w > 1 for w in row_weights),
+        "weighted_rows": sum(row_weights),
+        "share": share,
+        "median_days": median,
+        "low": math.nan,
+        "high": math.nan,
+        "median_low": math.nan,
+        "median_high": math.nan,
+    }
+    if not clusters:
+        return out
+    rng = random.Random(seed)
+    shares, medians = [], []
+    for _ in range(reps):
+        drawn = [p for cluster in rng.choices(clusters, k=len(clusters)) for p in cluster]
+        s, m = stats(drawn)
+        shares.append(s)
+        medians.append(m)
+    shares.sort()
+    medians.sort()
+    out.update(
+        low=percentile(shares, 0.025),
+        high=percentile(shares, 0.975),
+        median_low=percentile(medians, 0.025),
+        median_high=percentile(medians, 0.975),
+    )
+    return out
 
 
 # ------------------------------------------------- 2. repository bootstrap
@@ -362,7 +493,7 @@ def providers_test(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
 # ------------------------------------------------------------------- run
 
 
-def load(data: Path) -> dict[str, Any]:
+def load(data: Path, cache: Path | None = None) -> dict[str, Any]:
     """Every input. Raises MissingInputs naming each missing file."""
     needed = {
         "labeled.jsonl": "research.filtering.filter",
@@ -396,6 +527,7 @@ def load(data: Path) -> dict[str, Any]:
             r["sha"] for r in read_jsonl(data / "targets.jsonl") if r.get("ai_assisted")
         },
         "sample": sample,
+        "cache": cache or data / "cache",
         "population": json.loads((data / SAMPLE / "strata.json").read_text("utf-8"))["population"],
     }
 
@@ -422,15 +554,23 @@ def run(
     }
     out["first_per_repo"] = summary(first_per_repo(headline))
 
-    incomplete = incomplete_searches(inputs["candidate_stats"], registry)
     google = [
         r for r in away if r["provider"] not in EXACT and r["shutdown"] <= retired_by.isoformat()
     ]
-    out["incomplete"] = {
-        "models": incomplete,
-        "exact": summary(without_models(headline, incomplete, registry)),
-        "google": summary(google),
-        "google_without": summary(without_models(google, incomplete, registry)),
+    out["google"] = summary(google)
+    stats = inputs["candidate_stats"]
+    cut = truncated_days(stats, inputs["cache"], registry)
+    out["truncation"] = {
+        "models": incomplete_searches(stats, registry),
+        "late_searched_rows": late_searched_rows(headline, stats, registry),
+        "days": len(cut),
+        "days_without_total": sum(d["total"] is None for d in cut),
+        "days_after_shutdown": sum(d["after_shutdown"] is True for d in cut),
+        "days_before_shutdown": sum(d["after_shutdown"] is False for d in cut),
+        "missing_results": sum(d["total"] - MAX_RESULTS for d in cut if d["total"]),
+        "largest_total": max((d["total"] for d in cut if d["total"]), default=None),
+        "exact": weighted_summary(headline, weights(headline, cut, registry), reps),
+        "google": weighted_summary(google, weights(google, cut, registry), reps),
     }
 
     out["repo_bootstrap"] = repo_bootstrap(headline, reps)
@@ -477,33 +617,40 @@ def share_text(s: Mapping[str, Any]) -> str:
 def report(result: Mapping[str, Any]) -> None:
     """Print every check."""
     labels, boot, hand = result["labels"], result["repo_bootstrap"], result["hand"]
-    incomplete = result["incomplete"]
+    cut = result["truncation"]
     head = labels["headline"]
     print(f"OpenAI and Anthropic, models shut down by {result['retired_by']}")
-    print(f"\n  {'':<42}{'migrations':>11}{'after the shutdown (95% CI)':>30}{'median days':>13}")
+    print(f"\n  {'':<46}{'migrations':>11}{'after the shutdown (95% CI)':>30}{'median days':>13}")
     for text, s in (
         ("Headline (migration_away)", head),
         ("First per repository and model", result["first_per_repo"]),
-        ("Without models searched incompletely", result["incomplete"]["exact"]),
+        ("Cut days weighted up (CI by repository)", cut["exact"]),
         ("Kim's rules (migration)", labels["kim_label"]),
         ("Strict rules (migration_strict)", labels["strict"]),
         ("migration_away without AI-assisted", labels["no_ai"]),
+        ("Google (earliest dates)", result["google"]),
+        ("Google, cut days weighted up", cut["google"]),
     ):
         median = number(s["median_days"], digits=0)
-        print(f"  {text:<42}{s['rows']:>11,}{share_text(s):>30}{median:>13}")
+        print(f"  {text:<46}{s['rows']:>11,}{share_text(s):>30}{median:>13}")
+
+    print(f"\nDays GitHub cut at 1,000 results: {cut['days']}")
+    before, after = cut["days_before_shutdown"], cut["days_after_shutdown"]
+    print(f"  before / after the model's shutdown: {before} / {after}")
+    print(f"  without a total in the cache: {cut['days_without_total']}")
+    largest = cut["largest_total"]
     print(
-        f"  {'Google (earliest dates)':<42}{incomplete['google']['rows']:>11,}"
-        f"{share_text(incomplete['google']):>30}"
-        f"{number(incomplete['google']['median_days'], digits=0):>13}"
+        f"  results not seen: {cut['missing_results']:,} "
+        f"(largest day: {'-' if largest is None else f'{largest:,}'} results)"
     )
-    g = incomplete["google_without"]
     print(
-        f"  {'Google without models searched incompletely':<42}{g['rows']:>11,}"
-        f"{share_text(g):>30}{number(g['median_days'], digits=0):>13}"
+        f"  headline migrations weighted up: {cut['exact']['reweighted']:,} "
+        f"(they now count as {number(cut['exact']['weighted_rows'], digits=0)} in all)"
     )
-    print("\nModels searched incompletely:")
-    for model_id, why in incomplete["models"].items():
-        print(f"  {model_id:<34}{'; '.join(why)}")
+    print(
+        "  headline migrations from IDs searched only from their notice: "
+        f"{cut['late_searched_rows']:,}"
+    )
 
     print(
         f"\nResampling whole repositories ({boot['repos']:,} repositories, "
@@ -557,9 +704,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=Path("research/data/robustness.json"))
     parser.add_argument("--retired-by", type=date.fromisoformat, default=RETIRED_BY)
     parser.add_argument("--reps", type=int, default=REPS, help="Bootstrap resamples.")
+    parser.add_argument(
+        "--cache", type=Path, help="The miner's cache (default: research/data/cache)."
+    )
     args = parser.parse_args(argv)
     try:
-        inputs = load(args.data)
+        inputs = load(args.data, args.cache)
     except MissingInputs as missing:
         print(f"Missing inputs (file <- what makes it):\n{missing}", file=sys.stderr)
         return 1

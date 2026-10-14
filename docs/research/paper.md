@@ -39,7 +39,7 @@ It reads these files from `research/data/` and stops with a list of any that are
 | `tables/lag.tex` | RQ2: median days from the shutdown per provider |
 | `tables/targets.tex`, `tables/top-switches.tex` | RQ3: what projects migrate to |
 | `tables/changed-files.tex` | RQ4: tests, evaluations and pure ID swaps |
-| `tables/robustness.tex` | RQ1 and RQ2 repeated with other labels, without incompletely searched models, and with intervals by repository |
+| `tables/robustness.tex` | RQ1 and RQ2 repeated with other labels, with days cut at 1,000 results weighted up, and with intervals by repository |
 | `figures/lag-windows.pdf` | Share of migrations in each window around the shutdown |
 | `figures/lag-ecdf.pdf` | Cumulative share of migrations by days from the shutdown, per provider |
 | `figures/targets.pdf` | How targets relate to the recommended replacement, per provider |

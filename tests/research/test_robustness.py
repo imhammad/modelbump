@@ -13,12 +13,17 @@ from modelbump.registry import load_registry
 from research.analysis.robustness import (
     cliff_size,
     incomplete_searches,
+    late_searched_rows,
     main,
     mann_whitney,
     repo_bootstrap,
     true_after_share,
-    without_models,
+    truncated_days,
+    weighted_median,
+    weighted_summary,
+    weights,
 )
+from research.mining.github_search import _cache_key
 
 # Models shut down before 2026-07-11, one per provider.
 MODELS = {"openai": "o1-mini", "anthropic": "claude-3-5-sonnet-20241022", "google": None}
@@ -58,12 +63,21 @@ def make_data(data: Path) -> None:
         "".join(json.dumps({"sha": f"s{n}", "ai_assisted": n < 4}) + "\n" for n in range(40)),
         encoding="utf-8",
     )
+    entry = load_registry().get("o1-mini")
+    assert entry is not None
+    cut_day = (entry[1].shutdown - timedelta(days=3)).isoformat()  # the day of row s1
+    cut = f'"o1-mini" committer-date:{cut_day}..{cut_day}'
     stats = {
         "focused_starts": {"gpt-4": "2026-03-23"},
         "too_big_without_notice": ["gemini-2.0-flash"],
-        "truncated_windows": ['"o1-mini" committer-date:2025-01-01..2025-01-01'],
+        "truncated_windows": [cut, '"o1-mini" committer-date:2024-01-01..2024-01-01'],
     }
     (data / "candidates.stats.json").write_text(json.dumps(stats), encoding="utf-8")
+    (data / "cache").mkdir()
+    (data / "cache" / f"{_cache_key(cut, 1)}.json").write_text(
+        json.dumps({"query": cut, "page": 1, "response": {"total_count": 3000, "items": []}}),
+        encoding="utf-8",
+    )
     sample = data / "validation_v2_adjudicated"
     sample.mkdir()
     key = [(1, "s0", "away", "yes"), (2, "s1", "away", "no"), (3, "s2", "away", "yes")]
@@ -94,7 +108,56 @@ def test_incomplete_searches_by_registry_id() -> None:
         "gpt-4-0613": ["day over 1,000 results", "searched from the notice"],
     }
     rows = [{"model_id": "gpt-4-0613"}, {"model_id": "gpt-4"}, {"model_id": "o1-mini"}]
-    assert without_models(rows, found, load_registry()) == [{"model_id": "o1-mini"}]
+    assert late_searched_rows(rows, stats, load_registry()) == 2
+
+
+def test_truncated_days_and_weights(tmp_path: Path) -> None:
+    registry = load_registry()
+    seen = '"gpt-4" committer-date:2026-05-01..2026-05-01'
+    stats = {"truncated_windows": [seen, '"gpt-4" committer-date:2026-05-02..2026-05-02', "bad"]}
+    (tmp_path / f"{_cache_key(seen, 1)}.json").write_text(
+        json.dumps({"response": {"total_count": 2500}}), encoding="utf-8"
+    )
+    days = truncated_days(stats, tmp_path, registry)
+    assert days == [
+        {
+            "model": "gpt-4-0613",
+            "start": "2026-05-01",
+            "end": "2026-05-01",
+            "total": 2500,
+            "after_shutdown": False,
+        },
+        {
+            "model": "gpt-4-0613",
+            "start": "2026-05-02",
+            "end": "2026-05-02",
+            "total": None,
+            "after_shutdown": False,
+        },
+    ]
+    rows = [
+        {"model_id": "gpt-4", "committed": "2026-05-01"},
+        {"model_id": "gpt-4-0613", "committed": "2026-05-02"},  # no total: weight 1
+        {"model_id": "o1-mini", "committed": "2026-05-01"},  # another model
+    ]
+    assert weights(rows, days, registry) == [2.5, 1.0, 1.0]
+
+
+def test_weighted_median_and_summary() -> None:
+    assert weighted_median([5, 1, 3], [1, 1, 1]) == 3
+    assert weighted_median([-10, 20], [3, 1]) == -10
+    assert math.isnan(weighted_median([], []))
+    rows = [
+        {"repo": "a", "days_from_shutdown": -10},
+        {"repo": "b", "days_from_shutdown": 20},
+        {"repo": "c", "days_from_shutdown": 30},
+    ]
+    s = weighted_summary(rows, [2.0, 1.0, 1.0], reps=50)
+    assert (s["share"], s["median_days"], s["reweighted"], s["weighted_rows"]) == (0.5, -10, 1, 4)
+    assert s["low"] <= 0.5 <= s["high"]
+    plain = weighted_summary(rows, [1.0, 1.0, 1.0], reps=50)
+    assert plain["share"] == pytest.approx(2 / 3)
+    assert math.isnan(weighted_summary([], [], reps=5)["low"])
 
 
 def test_mann_whitney() -> None:
@@ -146,17 +209,21 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     make_data(data)
     assert main(["--data", str(data), "--out", str(out), "--reps", "100"]) == 0
     printed = capsys.readouterr().out
-    assert "Models searched incompletely" in printed
+    assert "Days GitHub cut at 1,000 results: 2" in printed
     result = json.loads(out.read_text())
     labels = result["labels"]
     assert labels["headline"]["rows"] == 40
     assert labels["strict"]["rows"] == 26
     assert labels["no_ai"]["rows"] == 36
     assert result["first_per_repo"]["rows"] == 10  # 5 repositories, 2 models
-    incomplete = result["incomplete"]
-    assert set(incomplete["models"]) == {"gemini-2.0-flash", "gpt-4-0613", "o1-mini"}
-    assert incomplete["exact"]["rows"] == 20  # the Claude rows
-    assert (incomplete["google"]["rows"], incomplete["google_without"]["rows"]) == (1, 0)
+    cut = result["truncation"]
+    assert set(cut["models"]) == {"gemini-2.0-flash", "gpt-4-0613", "o1-mini"}
+    assert (cut["days"], cut["days_without_total"], cut["missing_results"]) == (2, 1, 2000)
+    assert (cut["days_before_shutdown"], cut["days_after_shutdown"]) == (2, 0)
+    assert cut["late_searched_rows"] == 0
+    assert (cut["exact"]["reweighted"], cut["exact"]["weighted_rows"]) == (1, 42)  # s1 counts 3
+    assert cut["exact"]["share"] < labels["headline"]["share"]  # s1 is before the shutdown
+    assert result["google"]["rows"] == cut["google"]["rows"] == 1
     boot = result["repo_bootstrap"]
     assert boot["share_low"] <= labels["headline"]["share"] <= boot["share_high"]
     hand = result["hand"]
