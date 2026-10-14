@@ -54,6 +54,7 @@ INPUTS: dict[str, str] = {
     "targets.stats.json": "research.enrichment.targets",
     "files.stats.json": "research.enrichment.files",
     "files.jsonl": "research.enrichment.files",
+    "robustness.json": "research.analysis.robustness",
     "validation_v2_adjudicated/sample.csv": "the labelled second sample (Step 15)",
     "validation_v2_adjudicated/sample_key.csv": "research.validation.sample (Step 15)",
     "validation_v2_adjudicated/strata.json": "research.validation.sample (Step 15)",
@@ -94,6 +95,10 @@ INK, MUTED, GRID = "#0b0b0b", "#52514e", "#d9d8d4"
 
 class MissingInputs(Exception):
     """Some input files are not there yet."""
+
+
+class OutOfDate(Exception):
+    """An input was built from older data than the others."""
 
 
 @dataclass
@@ -149,6 +154,7 @@ def load(data: Path) -> dict[str, Any]:
         if name.endswith(".stats.json"):
             out[name.removesuffix(".stats.json")] = json.loads((data / name).read_text("utf-8"))
     out["timing_rows"] = list(read_jsonl(data / "timing.jsonl"))
+    out["robustness"] = json.loads((data / "robustness.json").read_text("utf-8"))
     return out
 
 
@@ -454,6 +460,136 @@ def changed_files(paper: Paper, inputs: dict[str, Any]) -> None:
     paper.figures["changed-files.pdf"] = rq4_figure(stats)
 
 
+# Robustness rows: key in robustness.json, command name, text in the table.
+ROBUST_ROWS = (
+    (("labels", "kim_label"), "KimLabel", "Kim's rules (\\texttt{migration})"),
+    (("labels", "strict"), "Strict", "Strict rules (\\texttt{migration\\_strict})"),
+    (("labels", "no_ai"), "NoAI", "Without AI-assisted commits"),
+    (("incomplete", "exact"), "Complete", "Without models searched incompletely"),
+)
+
+
+def robustness(paper: Paper, inputs: dict[str, Any]) -> None:
+    """Checks of RQ1 and RQ2 against a reviewer's objections (ADR 0021)."""
+    r = inputs["robustness"]
+    head = r["labels"]["headline"]
+    expected = inputs["timing_90d"]["headline"]["exact_dates"]
+    if (head["rows"], head["after"]) != (expected["total"], expected["after"]):
+        raise OutOfDate(
+            "robustness.json does not match timing_90d.stats.json. Run again:\n"
+            "  uv run python -m research.analysis.robustness"
+        )
+
+    def spread(s: dict[str, Any]) -> str:
+        return f"{days(s['median_days'])} ({days(s['median_low'])} to {days(s['median_high'])})"
+
+    def line(text: str, s: dict[str, Any], low: float, high: float, median: str) -> str:
+        return (
+            f"{text} & {s['rows']:,} & {pct(known(s['share']))}\\% & {pct(low)}--{pct(high)} "
+            f"& {median} \\\\"
+        )
+
+    boot = r["repo_bootstrap"]
+    paper.put("AfterLateRepoLow", pct(boot["share_low"]), boot["share_low"])
+    paper.put("AfterLateRepoHigh", pct(boot["share_high"]), boot["share_high"])
+    paper.put("ExactDaysRepoLow", days(boot["median_low"]), boot["median_low"])
+    paper.put("ExactDaysRepoHigh", days(boot["median_high"]), boot["median_high"])
+    paper.count("BootReps", boot["reps"])
+    paper.count("BootRepos", boot["repos"])
+    repo_median = (
+        f"{days(head['median_days'])} ({days(boot['median_low'])} to {days(boot['median_high'])})"
+    )
+    lines = [
+        line(
+            "\\texttt{migration\\_away}, as in RQ1",
+            head,
+            head["low"],
+            head["high"],
+            spread(head),
+        ),
+        line(
+            "same, intervals by repository",
+            head,
+            boot["share_low"],
+            boot["share_high"],
+            repo_median,
+        ),
+        line(
+            "First per repository and model",
+            r["first_per_repo"],
+            r["first_per_repo"]["low"],
+            r["first_per_repo"]["high"],
+            spread(r["first_per_repo"]),
+        ),
+    ]
+    for (group, key), name, text in ROBUST_ROWS:
+        s = r[group][key]
+        paper.share(f"After{name}", s["after"], s["rows"])
+        paper.count(f"After{name}Total", s["rows"])
+        paper.put(f"{name}Days", days(s["median_days"]), s["median_days"])
+        lines.append(line(text, s, s["low"], s["high"], spread(s)))
+    incomplete = r["incomplete"]
+    paper.count("IncompleteModels", len(incomplete["models"]))
+    paper.count("IncompleteExactRows", head["rows"] - incomplete["exact"]["rows"])
+    lines.append("\\midrule")
+    for key, name, text in (
+        ("google", "", "Google (earliest dates)"),
+        ("google_without", "GoogleComplete", "Google, without models searched incompletely"),
+    ):
+        s = incomplete[key]
+        if name:
+            paper.share(f"After{name}", s["after"], s["rows"])
+            paper.count(f"After{name}Total", s["rows"])
+        if s["rows"]:
+            lines.append(line(text, s, s["low"], s["high"], spread(s)))
+    paper.tables["robustness.tex"] = tabular(
+        "lrrrr",
+        "Migrations counted & Migrations & After the shutdown & 95\\% CI & Median days (95\\% CI)",
+        "\n".join(lines),
+    )
+
+    hand = r["hand"]
+    for key, name in (
+        ("precision_after", "PrecisionAfter"),
+        ("precision_before", "PrecisionBefore"),
+    ):
+        paper.share(name, hand[key]["yes"], hand[key]["rows"])
+        paper.count(f"{name}Rows", hand[key]["rows"])
+    paper.share("SampleLabelAfter", hand["label_after"]["after"], hand["label_after"]["rows"])
+    paper.share("SampleMissedAfter", hand["missed_after"]["after"], hand["missed_after"]["rows"])
+    paper.count("SampleMissedRows", hand["missed_after"]["rows"])
+    true_after = hand["true_after"]
+    for suffix, field_name in (("", "share"), ("Low", "low"), ("High", "high")):
+        value = true_after[field_name]
+        paper.put(f"SampleTrueAfter{suffix}", pct(known(value)), value)
+
+    for key, name in (("all", "All"), ("after_shutdown", "Late"), ("first_per_repo", "First")):
+        t = r["providers"][key]
+        paper.put(f"Cliff{name}", signed(t["delta"]), t["delta"])
+        paper.put(f"Cliff{name}Size", t["size"] or "--")
+        paper.put(f"Cliff{name}P", p_value(t["p"]), t["p"])
+        paper.put(f"Cliff{name}Z", signed(t["z"]), t["z"])
+
+
+def known(value: float | None) -> float:
+    """``value``, with None (unknown in the JSON file) as NaN."""
+    return math.nan if value is None else value
+
+
+def signed(value: float | None) -> str:
+    """A number with two decimals and a LaTeX minus sign."""
+    if value is None or math.isnan(value):
+        return "--"
+    return f"{value:.2f}".replace("-", "$-$")
+
+
+def p_value(p: float | None) -> str:
+    """A p-value as the paper writes it."""
+    if p is None or math.isnan(p):
+        return "--"
+    return "$<$0.001" if p < 0.001 else f"{p:.3f}"
+
+
 # ---------------------------------------------------------------- LaTeX output
 
 
@@ -653,6 +789,7 @@ def build(data: Path) -> Paper:
     lag(paper, inputs)
     targets(paper, inputs)
     changed_files(paper, inputs)
+    robustness(paper, inputs)
     return paper
 
 
@@ -684,6 +821,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except MissingInputs as missing:
         print(f"Missing inputs (file <- what makes it):\n{missing}", file=sys.stderr)
         return 1
+    except OutOfDate as stale:
+        print(stale, file=sys.stderr)
+        return 1
     write(paper, args.out)
     print(f"Written to {args.out}/ on {date.today().isoformat()}:")
     print(f"  numbers.tex and numbers.json: {len(paper.numbers)} numbers")
@@ -700,6 +840,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("FollowsLine", "follows the recommended line (%)"),
         ("TouchTest", "touches a test file (%)"),
         ("TouchEval", "touches an evaluation file (%)"),
+        ("AfterKimLabel", "after the shutdown, Kim's label (%)"),
+        ("CliffAll", "Cliff's delta, OpenAI against Anthropic"),
     ):
         print(f"  \\{name:<20}{p.get(name, '--'):>10}  {text}")
     return 0

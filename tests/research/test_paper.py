@@ -2,6 +2,7 @@
 
 import csv
 import json
+import math
 from dataclasses import asdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -13,6 +14,7 @@ from modelbump.registry import load_registry
 from research.analysis import lag
 from research.analysis.paper import Paper, build, main, numbers_tex, pct, short_window, tt
 from research.enrichment import files, targets
+from research.validation.score import wilson
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -60,6 +62,68 @@ def file_row(n: int, test: bool, evals: bool) -> dict[str, Any]:
         "touches_code": True,
         "id_swap_only": not test,
         "ai_assisted": n % 2 == 0,
+    }
+
+
+def summary(after: int, rows: int, median: float) -> dict[str, Any]:
+    """One robustness summary, as research.analysis.robustness writes it."""
+    low, high = wilson(after, rows)
+    share = after / rows if rows else None
+    return {
+        "rows": rows,
+        "repos": rows // 2,
+        "after": after,
+        "share": share,
+        "low": low,
+        "high": high,
+        "median_days": median,
+        "median_low": median - 2,
+        "median_high": median + 2,
+    }
+
+
+def robustness_result() -> dict[str, Any]:
+    """A robustness.json that matches the timing_90d headline below."""
+    test = {"n1": 7_000, "n2": 5_244, "u": 1.0, "z": -3.5, "p": 0.0004, "delta": -0.06}
+    return {
+        "retired_by": "2026-07-11",
+        "seed": 2029,
+        "labels": {
+            "headline": summary(7_619, 12_244, 11),
+            "kim_label": summary(7_000, 11_000, 9),
+            "strict": summary(5_000, 8_000, 10),
+            "no_ai": summary(7_100, 11_500, 12),
+        },
+        "first_per_repo": summary(6_742, 10_947, 8),
+        "incomplete": {
+            "models": {"gpt-4-0613": ["searched from the notice"]},
+            "exact": summary(7_500, 12_000, 11),
+            "google": summary(50, 100, 3),
+            "google_without": summary(0, 0, math.nan),
+        },
+        "repo_bootstrap": {
+            "reps": 2_000,
+            "seed": 2029,
+            "repos": 9_000,
+            "share_low": 0.60,
+            "share_high": 0.64,
+            "median_low": 7.0,
+            "median_high": 15.0,
+        },
+        "hand": {
+            "rows": 196,
+            "unplaced": 2,
+            "precision_after": {"yes": 40, "rows": 45, "share": 0.89, "low": 0.76, "high": 0.95},
+            "precision_before": {"yes": 40, "rows": 52, "share": 0.77, "low": 0.64, "high": 0.86},
+            "label_after": {"after": 45, "rows": 97, "share": 0.46},
+            "missed_after": {"after": 9, "rows": 20, "share": 0.45},
+            "true_after": {"share": 0.47, "low": 0.38, "high": 0.56},
+        },
+        "providers": {
+            "all": {**test, "size": "negligible"},
+            "after_shutdown": {**test, "p": 0.2, "delta": 0.2, "size": "small"},
+            "first_per_repo": {**test, "p": None, "delta": None, "size": ""},
+        },
     }
 
 
@@ -151,6 +215,8 @@ def make_data(data: Path) -> None:
     verdicts = ["match"] * 7 + ["agree_none", "missed", "extra", "hand_not_model"]
     write_csv(v2 / "targets_check.csv", [{"n": i, "verdict": v} for i, v in enumerate(verdicts)])
 
+    write_json(data / "robustness.json", robustness_result())
+
     sheet = data / "validation_files"
     write_csv(
         sheet / "sample.csv",
@@ -209,6 +275,18 @@ def test_build(tmp_path: Path) -> None:
     assert n["KimTouchTest"] == "16"
     assert n["TargetRows"] == "3"
     assert n["ExactDays"] != "--"
+    assert (n["AfterLateRepoLow"], n["AfterLateRepoHigh"]) == ("60.0", "64.0")
+    assert n["AfterKimLabel"] == "63.6"
+    assert n["IncompleteExactRows"] == "244"
+    assert n["AfterGoogleComplete"] == "--"
+    assert n["PrecisionAfter"] == "88.9"
+    assert n["SampleTrueAfter"] == "47.0"
+    assert (n["CliffAll"], n["CliffAllP"], n["CliffAllSize"]) == (
+        "$-$0.06",
+        "$<$0.001",
+        "negligible",
+    )
+    assert (n["CliffLateP"], n["CliffFirst"], n["CliffFirstP"]) == ("0.200", "--", "--")
     assert set(paper.tables) == {
         "dataset.tex",
         "validation.tex",
@@ -217,6 +295,7 @@ def test_build(tmp_path: Path) -> None:
         "targets.tex",
         "top-switches.tex",
         "changed-files.tex",
+        "robustness.tex",
     }
     assert set(paper.figures) == {
         "lag-windows.pdf",
@@ -224,8 +303,17 @@ def test_build(tmp_path: Path) -> None:
         "targets.pdf",
         "changed-files.pdf",
     }
+    assert "Google, without" not in paper.tables["robustness.tex"]  # no rows
     for table in paper.tables.values():
         assert table.startswith("\\begin{tabular}") and "\\bottomrule" in table
+
+
+def test_build_stops_on_old_robustness(tmp_path: Path) -> None:
+    make_data(tmp_path / "data")
+    old = robustness_result()
+    old["labels"]["headline"] = summary(7_000, 12_000, 11)
+    write_json(tmp_path / "data" / "robustness.json", old)
+    assert main(["--data", str(tmp_path / "data"), "--out", str(tmp_path / "out")]) == 1
 
 
 def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

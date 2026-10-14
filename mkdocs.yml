@@ -72,6 +72,7 @@ nav:
       - adr/0018-changed-files-sample.md
       - adr/0019-paper-numbers-from-one-script.md
       - adr/0020-dataset-release-package.md
+      - adr/0021-robustness-checks.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
@@ -93,5 +94,6 @@ nav:
       - research/lag.md
       - research/targets.md
       - research/files.md
+      - research/robustness.md
       - research/paper.md
       - research/release.md

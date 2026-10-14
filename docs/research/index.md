@@ -20,6 +20,7 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 - [Lag: how long before or after the shutdown?](lag.md)
 - [Targets: what do projects migrate to?](targets.md)
 - [Changed files: do migrations come with tests?](files.md)
+- [Robustness: do the timing results hold?](robustness.md)
 - [Paper numbers, tables and figures](paper.md)
 - [Releasing the dataset](release.md)
 - [Dataset card](https://github.com/imhammad/modelbump/blob/main/research/data/README.md): what the migration dataset holds, how it was built, its quality and limits

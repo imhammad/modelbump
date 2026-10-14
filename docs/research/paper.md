@@ -23,6 +23,7 @@ It reads these files from `research/data/` and stops with a list of any that are
 | `lag.stats.json` | `research.analysis.lag --retired-by 2026-07-11` |
 | `targets.stats.json` | `research.enrichment.targets` |
 | `files.stats.json`, `files.jsonl` | `research.enrichment.files` |
+| `robustness.json` | `research.analysis.robustness` |
 | `validation_v2_adjudicated/` | the second hand-labelled sample, with `sample_b.csv` and `targets_check.csv` |
 | `validation_files/` | the hand check of file kinds |
 
@@ -38,6 +39,7 @@ It reads these files from `research/data/` and stops with a list of any that are
 | `tables/lag.tex` | RQ2: median days from the shutdown per provider |
 | `tables/targets.tex`, `tables/top-switches.tex` | RQ3: what projects migrate to |
 | `tables/changed-files.tex` | RQ4: tests, evaluations and pure ID swaps |
+| `tables/robustness.tex` | RQ1 and RQ2 repeated with other labels, without incompletely searched models, and with intervals by repository |
 | `figures/lag-windows.pdf` | Share of migrations in each window around the shutdown |
 | `figures/lag-ecdf.pdf` | Cumulative share of migrations by days from the shutdown, per provider |
 | `figures/targets.pdf` | How targets relate to the recommended replacement, per provider |
