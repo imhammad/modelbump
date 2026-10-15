@@ -1,0 +1,17 @@
+\section{Background and Related Work}\label{sec:background}
+
+\subsection{How providers retire models}
+
+OpenAI, Anthropic and Google each publish a deprecation page that lists retired and retiring model IDs. For each model, OpenAI and Anthropic give the day the deprecation was announced, the day the model stops answering (the \emph{shutdown}), and a recommended replacement. Google's page gives no announcement day and, for many models, only the earliest day on which the model may be shut down. Providers sometimes postpone a retirement; we count from the earliest announcement. A model can also have several IDs, such as a dated ID and an alias that points to it.
+
+\subsection{Deprecation and migration in software ecosystems}
+
+How clients react to deprecated APIs is well studied. \citet{robbes2012deprecation} followed 577 deprecated methods and 186 deprecated classes through the Squeak and Pharo ecosystems and measured how often, how widely and how quickly client systems adapted to them. \citet{sawant2018deprecation} repeated the study for more than 25,000 GitHub clients of five popular Java APIs and for the JDK, and found reactions strikingly similar to those in Smalltalk. Library migration, the replacement of one library by another, has been studied at scale in Java \citep{he2021migration}. \citet{kula2018update} found that projects often keep outdated dependencies even after a security advisory. A retired LLM differs from these cases in one important way: the old version stops working, so doing nothing is not an option.
+
+\subsection{Changing models in LLM applications}
+
+Models behind the same API name can change behaviour over time \citep{chen2024chatgpt}, and prompts that work on one model can get worse on its successor, which calls for regression tests specific to LLM APIs \citep{ma2024prompt}. A migration to a new model is a deliberate change of this kind, and it is the moment such tests would matter most.
+
+\subsection{The study we replicate}
+
+\citet{kim2026retires} mined GitHub commits that migrate away from retired LLMs and reported their timing relative to each model's deprecation and shutdown, which files they change, and how they mention evaluations. It reports \KimCommits{} migration commits from \KimRepos{} repositories, of which \KimAfterShutdown\% come after the shutdown; \KimTouchTest\% of the \KimFileLevel{} migrations with file data touch a test file (Section~4.4 of that paper), and \KimMentionEval\% of commit messages mention an evaluation or regression suite (Section~4.5). It keeps commits with a migration word, drops moves into the retired model, commits from bots, commits with an AI coding-tool trailer, and commits made more than 30 days before the deprecation notice. Our replication keeps those rules as one of its labels (Section~\ref{sec:labels}) and adds a stricter one.

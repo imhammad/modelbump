@@ -301,10 +301,10 @@ def test_build(tmp_path: Path) -> None:
     assert n["SampleTrueAfter"] == "47.0"
     assert (n["CliffAll"], n["CliffAllP"], n["CliffAllSize"]) == (
         "$-$0.06",
-        "$<$0.001",
+        "$<0.001$",
         "negligible",
     )
-    assert (n["CliffLateP"], n["CliffFirst"], n["CliffFirstP"]) == ("0.200", "--", "--")
+    assert (n["CliffLateP"], n["CliffFirst"], n["CliffFirstP"]) == ("$=0.200$", "--", "--")
     assert set(paper.tables) == {
         "dataset.tex",
         "validation.tex",

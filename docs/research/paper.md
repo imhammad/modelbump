@@ -53,3 +53,7 @@ In the paper, a number is written as its command:
 ```
 
 The output holds aggregate numbers only, so it is committed with the code.
+
+## Writing the paper
+
+The paper itself is in `paper/` ([ADR 0022](../adr/0022-paper-in-latex.md)): `main.tex`, one file per section in `paper/sections/`, and `references.bib`. It reads `paper/generated/numbers.tex` and the tables and figures, and GitHub Actions builds the PDF on every pull request that changes `paper/`. See `paper/README.md` for how to write and build it.

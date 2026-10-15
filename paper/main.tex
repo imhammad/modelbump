@@ -1,0 +1,82 @@
+% Paper 1: when do open-source projects leave a retired LLM? (ADR 0022)
+% Build from this folder with:  latexmk -pdf main.tex
+% Every number comes from generated/numbers.tex (research.analysis.paper, ADR 0019).
+\documentclass[pdflatex,sn-basic]{sn-jnl}
+
+% The packages of the Springer Nature template; the class expects some of them.
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{geometry}%
+\usepackage{url}%
+
+% Double-anonymous review: set to \anonymoustrue to hide the author and every
+% link that names them (repository, Zenodo record).
+\newif\ifanonymous
+\anonymousfalse
+
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\RepoURL}{\ifanonymous[anonymised]\else\url{https://github.com/imhammad/modelbump}\fi}
+\newcommand{\DataDOI}{\ifanonymous[anonymised]\else\url{https://doi.org/10.5281/zenodo.23357609}\fi}
+\newcommand{\RQ}[1]{\textbf{RQ#1}}
+% A table from generated/tables, with its label and caption. The table is
+% typeset into a box before the caption (the class's caption does not allow a
+% tabular inside a box after it) and shrunk only if it is wider than the text.
+\newsavebox{\gentablebox}
+\newcommand{\gentable}[3]{%
+  \begin{table}[t]%
+  \sbox{\gentablebox}{\small\input{generated/tables/#1}}%
+  \caption{#3}\label{#2}%
+  \ifdim\wd\gentablebox>\textwidth
+    \resizebox{\textwidth}{!}{\usebox{\gentablebox}}%
+  \else
+    \usebox{\gentablebox}%
+  \fi
+  \end{table}}
+
+\input{generated/numbers}
+\graphicspath{{generated/figures/}}
+
+\raggedbottom
+
+\begin{document}
+
+\title[How late do projects leave retired LLMs?]{How Late Do Open-Source Projects Leave Retired LLMs? A Replication and Extension}
+
+\ifanonymous
+\author{\fnm{Anonymous} \sur{Author}}
+\affil{\orgname{Anonymous}}
+\else
+\author*{\fnm{Hammad} \sur{Hassan}}\email{hammad.hassan@student.aiu.edu.my}
+\affil*{\orgdiv{School of Computing and Informatics}, \orgname{Albukhary International University}, \orgaddress{\city{Alor Setar}, \state{Kedah}, \country{Malaysia}}}
+\fi
+
+\abstract{\input{sections/abstract}}
+
+\keywords{large language models, model deprecation, software migration, mining software repositories, replication, empirical study}
+
+\maketitle
+
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/method}
+\input{sections/results}
+\input{sections/robustness}
+\input{sections/discussion}
+\input{sections/threats}
+\input{sections/conclusion}
+
+\backmatter
+
+\input{sections/declarations}
+
+\bibliography{references}
+
+\end{document}

@@ -605,10 +605,10 @@ def signed(value: float | None) -> str:
 
 
 def p_value(p: float | None) -> str:
-    """A p-value as the paper writes it."""
+    """A p-value with its relation, as the paper writes it after "$p$": "$<0.001$" or "$=0.380$"."""
     if p is None or math.isnan(p):
         return "--"
-    return "$<$0.001" if p < 0.001 else f"{p:.3f}"
+    return "$<0.001$" if p < 0.001 else f"$={p:.3f}$"
 
 
 # ---------------------------------------------------------------- LaTeX output

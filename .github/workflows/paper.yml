@@ -1,0 +1,50 @@
+name: Paper
+
+on:
+  pull_request:
+    paths: ["paper/**", ".github/workflows/paper.yml"]
+  push:
+    branches: [main]
+    paths: ["paper/**", ".github/workflows/paper.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: paper-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build paper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-extra texlive-science texlive-bibtex-extra \
+            texlive-fonts-recommended latexmk lmodern
+      - name: Build the PDF (any LaTeX error fails the build)
+        working-directory: paper
+        run: latexmk -pdf main.tex
+      - name: Fail on undefined references or citations
+        working-directory: paper
+        run: |
+          if grep -E "There were undefined|Reference .* undefined|Citation .* undefined" main.log; then
+            exit 1
+          fi
+      - name: List open TODOs
+        working-directory: paper
+        run: |
+          # A warning, not a failure: drafts may have TODOs, the submitted PDF may not.
+          grep -rn --include='*.tex' '\\todo{' . | grep -v 'newcommand' | grep -v '^./generated/' | while IFS= read -r line; do
+            echo "::warning title=Open TODO in the paper::${line}"
+          done || true
+      - name: Upload the PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: paper/main.pdf

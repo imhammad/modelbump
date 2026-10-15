@@ -1,5 +1,7 @@
 # Runs automatically on every `git commit`. Run on all files with:
 #   uv run pre-commit run --all-files
+# Springer's template files stay exactly as downloaded.
+exclude: ^paper/sn-
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

@@ -1,0 +1,11 @@
+\section{Threats to Validity}\label{sec:threats}
+
+\paragraph{Construct validity.} A migration is identified from its commit message. The label is \Precision\% precise and finds about \Recall\% of migrations; Section~\ref{sec:robustness} shows that its errors do not move the timing result much, but they enter every other number too. The commit day is when the change was committed, not when it reached production, so a commit made before the shutdown may still have been deployed after it. Recommended replacements come from the providers' pages as they are today, not on the day of each commit, so the exact match in RQ3 is a lower bound. Tier and generation changes come from model names, not from prices or benchmarks. Google gives only the earliest possible shutdown day, so its timing is less precise, and we never pool it with the other two.
+
+\paragraph{Internal validity.} GitHub's search is fuzzy and returns at most 1,000 results per query. We kept only messages with the exact ID and weighted the days that hit the limit back in (Section~\ref{sec:robustness}). Five very common IDs were searched only from 30 days before their notice; none of them is in the RQ1 headline. RQ4 looks at a single commit per migration: a project may have changed its tests in another commit before or after the switch, so the shares are a lower bound for the whole migration. The evaluation share is a lower bound for a second reason: the path rules found fewer evaluation changes than the hand check (Section~\ref{sec:method}).
+
+\paragraph{Conclusion validity.} Commits from the same repository are not independent; intervals from resampling repositories are almost the same as per-commit ones. With thousands of commits, small differences reach statistical significance, so we report effect sizes and intervals rather than $p$-values alone.
+
+\paragraph{External validity.} We study public GitHub repositories and three providers. Private code, other hosts and other providers, including open models served by third parties, may behave differently. The period covers the retirements announced up to \MiningEnd.
+
+\paragraph{Reliability.} Every number in this paper is generated from the data by one script, all random samples use fixed seeds, and the dataset, the hand labels and the code are public (see the data availability statement).

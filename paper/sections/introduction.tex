@@ -1,0 +1,28 @@
+\section{Introduction}\label{sec:intro}
+
+Applications that use a hosted large language model (LLM) call it by a model ID, such as \texttt{gpt-4-0613} or \texttt{claude-3-5-sonnet-20241022}. Each provider retires its model versions on a published schedule: it announces a deprecation, names a replacement, and after a notice period the model ID stops answering. An application that has not moved to another model by then fails. Unlike a deprecated library, which keeps working at the version a project pinned, a retired model leaves no version to stay on. Every project that depends on one has to migrate.
+
+\citet{kim2026retires} gave the first large picture of how open-source projects react. Mining GitHub commits that move away from retired models, the study reports that \KimAfterShutdown\% (95\% CI \KimAfterShutdownLow--\KimAfterShutdownHigh) of migrations happen only after the shutdown, that is, after the application has already broken, and that \KimTouchTest\% of migrations touch a test file. If projects really react mostly after their software stops working, deprecation notices are not doing their job, and both providers and tool builders should change course. A finding with such consequences deserves an independent check.
+
+This paper replicates the timing result on a newly built dataset and extends it with three questions the original study leaves open. We ask:
+
+\begin{itemize}
+\item \RQ{1} \emph{What share of migrations away from a retired model happen after its shutdown?} We repeat Kim's headline measure under several definitions, next to Kim's \KimAfterShutdown\%.
+\item \RQ{2} \emph{How long before or after the shutdown do projects migrate?} A share hides whether late migrations come a day or a year late, and how much of the notice period projects use.
+\item \RQ{3} \emph{What do projects migrate to?} We check whether they follow the provider's recommended replacement, stay with the same provider, or move to a model that is itself on its way out.
+\item \RQ{4} \emph{Do migration commits change tests or evaluations?} Changing the model changes the behaviour of the application \citep{chen2024chatgpt,ma2024prompt}, so we look at whether the commit that switches the model also touches the code that would catch a regression.
+\end{itemize}
+
+We searched GitHub for every commit that names one of \ModelIds{} retired model IDs from OpenAI, Anthropic and Google between \MiningStart{} and \MiningEnd, which gave \Candidates{} candidate commits. A rule-based label keeps the \MigrationsAway{} commits whose message moves away from a retired model. We measured its precision on a blind, stratified sample labelled by hand (\Precision\%, 95\% CI \PrecisionLow--\PrecisionHigh), with an independent second rater ($\kappa = \FilterKappa$).
+
+Our main findings are:
+\begin{itemize}
+\item The direction of Kim's result holds but its size does not. For models with exact dates and at least 90 days of follow-up, \AfterLate\% of migrations come after the shutdown (95\% CI \AfterLateLow--\AfterLateHigh). Applying Kim's own labelling rules to our data gives \AfterKimLabel\%, so the gap does not come from our label.
+\item The typical migration is late by days, not months. The median lands \ExactDays{} days after the shutdown (95\% CI \ExactDaysLow{} to \ExactDaysHigh), and the busiest window is the first month after it. Projects that miss the deadline wait longer for OpenAI models than for Anthropic ones.
+\item \FollowsLine\% of migrations with a named target follow the provider's recommended model line, and \SameProvider\% stay with the same provider, but \TargetOnList\% move to a model that is already on a retirement list.
+\item \TouchTest\% of sampled migration commits touch a test file, which replicates Kim's \KimTouchTest\%, and only \TouchEval\% touch an evaluation file. About a quarter only swap the model ID.
+\end{itemize}
+
+The contributions of this paper are a replication of the main timing result with a measured label, three research questions that extend it, a set of robustness checks that answer the objections a reviewer would raise, and an open dataset of LLM migration commits with its validation samples (see the data availability statement).
+
+The rest of the paper is organised as follows. Section~\ref{sec:background} describes how providers retire models and the work this study builds on. Section~\ref{sec:method} explains how the dataset was built and checked. Section~\ref{sec:results} answers the four research questions, and Section~\ref{sec:robustness} tests the timing results against alternative choices. Section~\ref{sec:discussion} discusses what the results mean, Section~\ref{sec:threats} the threats to validity, and Section~\ref{sec:conclusion} concludes.

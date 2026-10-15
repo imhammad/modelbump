@@ -27,3 +27,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0019](0019-paper-numbers-from-one-script.md) | Build every number, table and figure in the paper with one script | Accepted |
 | [0020](0020-dataset-release-package.md) | Publish the dataset on Zenodo as one versioned zip, without commit messages | Accepted |
 | [0021](0021-robustness-checks.md) | Test the timing results against the objections a reviewer would raise | Accepted |
+| [0022](0022-paper-in-latex.md) | Write Paper 1 in LaTeX in this repository, with the Springer Nature template | Accepted |
