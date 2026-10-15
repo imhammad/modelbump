@@ -55,6 +55,7 @@ INPUTS: dict[str, str] = {
     "files.stats.json": "research.enrichment.files",
     "files.jsonl": "research.enrichment.files",
     "robustness.json": "research.analysis.robustness",
+    "validation_v2/sample.csv": "the author's first pass on the second sample (Step 15)",
     "validation_v2_adjudicated/sample.csv": "the labelled second sample (Step 15)",
     "validation_v2_adjudicated/sample_key.csv": "research.validation.sample (Step 15)",
     "validation_v2_adjudicated/strata.json": "research.validation.sample (Step 15)",
@@ -90,6 +91,8 @@ NAMES = {
 }
 # Categorical slots 1 to 3 of the reference palette (validated, fixed order).
 COLORS = {"openai": "#2a78d6", "anthropic": "#eb6834", "google": "#1baf7a"}
+# Line styles and hatches as well, so the figures still read in black and white.
+LINESTYLES = {"openai": "-", "anthropic": "-.", "google": ":"}
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#d9d8d4"
 
 
@@ -209,6 +212,14 @@ def validation(paper: Paper, data: Path) -> None:
     recall = true_kept / (true_kept + missed) if true_kept + missed else math.nan
     paper.put("Recall", pct(recall), recall)
     paper.put("RealMigrations", f"{round(true_kept, -2):,.0f}", true_kept)
+    # The first pass, before the author re-checked the rows an AI assistant flagged.
+    first = filter_score.read_labels(data / "validation_v2" / "sample.csv")
+    first_away = [n for n, stratum in key.items() if stratum == kept[0] and n in first]
+    first_yes = sum(first[n] == "yes" for n in first_away)
+    paper.share("FirstPassPrecision", first_yes, len(first_away))
+    paper.count("FirstPassPrecisionRows", len(first_away))
+    paper.count("FirstPassChanged", sum(first.get(n) != answer for n, answer in labels.items()))
+    paper.count("FirstPassRows", len(labels))
     kappa, shared = cohen_kappa(labels, filter_score.read_labels(v2 / "sample_b.csv"))
     paper.put("FilterKappa", f"{kappa:.2f}", kappa)
     paper.count("FilterKappaRows", shared)
@@ -254,6 +265,11 @@ def validation(paper: Paper, data: Path) -> None:
     p = paper.numbers
     lines = [
         row("Migration label: precision", "Precision", "PrecisionRows"),
+        row(
+            "Migration label: precision (first pass)",
+            "FirstPassPrecision",
+            "FirstPassPrecisionRows",
+        ),
         f"Migration label: second rater & {p['FilterKappaRows']} & & & {p['FilterKappa']} \\\\",
         "\\midrule",
         row("Target: same as hand (before tuning)", "TargetCheckBefore", "TargetCheckBeforeRows"),
@@ -662,6 +678,7 @@ def windows_figure(stats: dict[str, Any]) -> Figure:
     groups = [g for g in ("openai+anthropic", "google") if g in stats["groups"]]
     width = 0.8 / max(len(groups), 1)
     colors = {"openai+anthropic": COLORS["openai"], "google": COLORS["google"]}
+    hatches = {"openai+anthropic": "", "google": "////"}
     for i, group in enumerate(groups):
         counts = stats["groups"][group]["windows"]
         total = sum(counts.values()) or 1
@@ -671,6 +688,9 @@ def windows_figure(stats: dict[str, Any]) -> Figure:
             [100 * counts[n] / total for n in names],
             width=width * 0.92,
             color=colors[group],
+            hatch=hatches[group],
+            edgecolor="white",
+            linewidth=0,
             label=NAMES[group],
         )
     shutdown = names.index("0 to 30 days after") - 0.5
@@ -721,6 +741,7 @@ def ecdf_figure(rows: Sequence[dict[str, Any]]) -> Figure:
             [100 * (i + 1) / n for i in range(n)],
             where="post",
             color=COLORS[provider],
+            linestyle=LINESTYLES[provider],
             linewidth=1.6,
             label=f"{NAMES[provider]} ({n:,})",
         )
@@ -741,9 +762,10 @@ def targets_figure(
     ax.grid(axis="y", visible=False)
     ax.grid(axis="x", color=GRID, linewidth=0.6)
     colors = ["#2a78d6", "#86b6ef", "#eda100", "#f3cf7a", "#c9c8c3"]
+    hatches = ["", "....", "", "////", ""]
     labels = [NAMES[c] for c in columns]
     left = [0.0] * len(columns)
-    for (key, text), color in zip(kinds, colors, strict=True):
+    for (key, text), color, hatch in zip(kinds, colors, hatches, strict=True):
         shares = []
         for c in columns:
             column = stats["follows"][c]
@@ -754,6 +776,7 @@ def targets_figure(
             shares,
             left=left,
             color=color,
+            hatch=hatch,
             label=text,
             edgecolor="white",
             linewidth=1,

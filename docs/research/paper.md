@@ -24,6 +24,7 @@ It reads these files from `research/data/` and stops with a list of any that are
 | `targets.stats.json` | `research.enrichment.targets` |
 | `files.stats.json`, `files.jsonl` | `research.enrichment.files` |
 | `robustness.json` | `research.analysis.robustness` |
+| `validation_v2/sample.csv` | the author's first pass on the second sample, before the re-check (reported next to the final precision) |
 | `validation_v2_adjudicated/` | the second hand-labelled sample, with `sample_b.csv` and `targets_check.csv` |
 | `validation_files/` | the hand check of file kinds |
 

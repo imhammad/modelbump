@@ -224,6 +224,11 @@ def make_data(data: Path) -> None:
     strata = ["away"] * 4 + ["other_kept"] * 2 + ["rejected"] * 2
     write_csv(v2 / "sample.csv", [{"n": i, "is_migration": a} for i, a in enumerate(answers)])
     write_csv(v2 / "sample_b.csv", [{"n": i, "is_migration": a} for i, a in enumerate(answers)])
+    first = ["yes"] * 4 + answers[4:]  # the first pass said yes to row 3
+    write_csv(
+        data / "validation_v2" / "sample.csv",
+        [{"n": i, "is_migration": a} for i, a in enumerate(first)],
+    )
     write_csv(v2 / "sample_key.csv", [{"n": i, "stratum": s} for i, s in enumerate(strata)])
     write_json(
         v2 / "strata.json",
@@ -281,6 +286,8 @@ def test_build(tmp_path: Path) -> None:
     assert (n["AfterAll"], n["AfterLate"], n["AfterWindow"]) == ("57.8", "62.2", "69.2")
     assert n["KimAfterShutdown"] == "82"
     assert n["Precision"] == "75.0"  # 3 of the 4 "away" rows
+    assert n["FirstPassPrecision"] == "100.0"  # before the re-check
+    assert (n["FirstPassChanged"], n["FirstPassRows"]) == ("1", "8")
     assert n["FilterKappa"] == "1.00"
     assert n["TargetCheck"] == "80.0"  # match 7 + agree_none 1, of 10 compared
     assert n["TargetNamedRight"] == "87.5"  # 7 of match 7 + extra 1
