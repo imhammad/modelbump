@@ -2,7 +2,7 @@
 
 **Job:** answer "which LLM model IDs does this repository depend on, and where?"
 
-**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md), [ADR 0026](../adr/0026-github-action.md)
+**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md), [ADR 0026](../adr/0026-github-action.md), [ADR 0027](../adr/0027-python-context-with-tree-sitter.md)
 
 ```mermaid
 flowchart LR
@@ -11,6 +11,7 @@ flowchart LR
     registry[(Registry)] --> ids
     ids --> resolve[resolve.py<br/>cloud forms to registry IDs]
     resolve --> scan[scan.py<br/>Finding: path, line, column, ID]
+    context[context.py<br/>tree-sitter for Python,<br/>keys for config] --> scan
     scan --> severity[severity.py<br/>RETIRED ... UNKNOWN on a day]
     registry --> severity
     severity --> report[report.py<br/>text, JSON, SARIF]
@@ -29,6 +30,22 @@ Each line is split into runs of letters, digits, `.`, `-` and `_`. A run is a fi
 | The part after a provider prefix | `anthropic.claude-3-...`, `openai/gpt-4o` | `my-gpt-4o` |
 
 Cloud forms are then mapped to the registry ID, but only when the mapped ID is in the registry: Bedrock's `claude-3-haiku-20240307-v1` becomes `claude-3-haiku-20240307`, and Vertex AI's `claude-3-5-sonnet@20240620` becomes `claude-3-5-sonnet-20240620`.
+
+## Context
+
+Each finding says where the ID sits, so a real use stands out from a mention:
+
+| Context | Example | Text report shows |
+|---------|---------|-------------------|
+| `call_argument` | `client.messages.create(model="...")` | `[in client.messages.create(model=)]` |
+| `assignment` | `MODEL = "..."`, `def ask(model="...")` | `[assigned to MODEL]` |
+| `string` | `{"model": "..."}`, `["..."]` | `[value of model]` for a dict value |
+| `docstring` | `"""Uses gpt-4o."""` | `[in a docstring]` |
+| `comment` | `# was gpt-4o` | `[in a comment]` |
+| `config` | `summary_model: ...` in YAML | `[value of summary_model]` |
+| `text` | files without a parser yet (TypeScript, notebooks, ...) | nothing |
+
+Python is parsed with tree-sitter, so files with syntax errors or Python 2 code still get context. `--skip-comments` leaves out comments and docstrings. JSON reports carry `context` and `detail`, and SARIF results carry them in `properties`.
 
 ## Severity
 
@@ -109,4 +126,5 @@ Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.
 
 ## Not yet
 
-- Call context from tree-sitter parsers (Python, then TypeScript).
+- A TypeScript and JavaScript parser for the same context.
+- IDs built from parts, such as `f"gpt-{version}"`.

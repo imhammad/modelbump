@@ -31,14 +31,15 @@ def test_scan_lists_findings_with_their_severity(tmp_path: Path) -> None:
     lines = result.stdout.splitlines()
     assert lines == [
         "app.py:1:6  claude-3-haiku-20240307  RETIRED  shut down on 2026-04-20; "
-        "suggested replacement claude-haiku-4-5-20251001",
-        "app.py:2:6  gpt-9-turbo  UNKNOWN  no retirement announced",
+        "suggested replacement claude-haiku-4-5-20251001  [assigned to A]",
+        "app.py:2:6  gpt-9-turbo  UNKNOWN  no retirement announced  [assigned to B]",
         "app.py:3:16  claude-3-haiku-20240307-v1 (= claude-3-haiku-20240307)  RETIRED  "
-        "shut down on 2026-04-20; suggested replacement claude-haiku-4-5-20251001",
+        "shut down on 2026-04-20; suggested replacement claude-haiku-4-5-20251001  "
+        "[assigned to C]",
         "app.py:4:6  gpt-5.1  DEPRECATED  shuts down on 2027-04-01 (in 161 days); "
-        "suggested replacement gpt-6-sol",
+        "suggested replacement gpt-6-sol  [assigned to D]",
         "app.py:5:6  gemini-3.1-flash-lite  DEPRECATED  shuts down no earlier than 2027-05-07 "
-        "(in 197 days); suggested replacement gemini-3.5-flash-lite",
+        "(in 197 days); suggested replacement gemini-3.5-flash-lite  [assigned to E]",
         "Found 5 model IDs in 1 file (scanned 1 file): 2 RETIRED, 2 DEPRECATED, 1 UNKNOWN.",
     ]
 
@@ -184,3 +185,18 @@ def test_scan_sarif_paths_are_relative_to_the_working_directory(
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     assert first_uri(str(tmp_path / "sub")) == "app.py"
+
+
+def test_scan_skip_comments(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        '"""Uses gpt-4o."""\n# old: gpt-4o\nclient.create(model="gpt-4o")\n'
+    )
+    every = runner.invoke(app, ["scan", str(tmp_path)])
+    assert "[in a docstring]" in every.stdout
+    assert "[in a comment]" in every.stdout
+    assert "Found 3 model IDs" in every.stdout
+    skipped = runner.invoke(app, ["scan", str(tmp_path), "--skip-comments"])
+    assert skipped.stdout.splitlines() == [
+        "app.py:3:22  gpt-4o  UNKNOWN  no retirement announced  [in client.create(model=)]",
+        "Found 1 model ID in 1 file (scanned 1 file): 1 UNKNOWN.",
+    ]

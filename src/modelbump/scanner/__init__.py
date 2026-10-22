@@ -1,5 +1,6 @@
 """Scanner: find the LLM model IDs a repository depends on (ADR 0023)."""
 
+from modelbump.scanner.context import Context, Place, places
 from modelbump.scanner.files import iter_source_files, read_source
 from modelbump.scanner.ids import IdMatch, ModelIdFinder
 from modelbump.scanner.resolve import resolve
@@ -9,13 +10,16 @@ from modelbump.scanner.severity import DEFAULT_SOON_DAYS, Assessment, Severity, 
 __all__ = [
     "DEFAULT_SOON_DAYS",
     "Assessment",
+    "Context",
     "Finding",
     "IdMatch",
     "ModelIdFinder",
+    "Place",
     "ScanResult",
     "Severity",
     "assess",
     "iter_source_files",
+    "places",
     "read_source",
     "resolve",
     "scan_path",

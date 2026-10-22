@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from modelbump.registry import load_registry
-from modelbump.scanner import Finding, scan_path
+from modelbump.scanner import Context, Finding, scan_path
 
 
 def write(root: Path, rel: str, text: str) -> None:
@@ -19,9 +19,25 @@ def test_scan_folder_finds_ids_in_code_and_config(tmp_path: Path) -> None:
     write(tmp_path, "README.md", "We use gpt-4o.\n")
     result = scan_path(tmp_path, load_registry())
     assert result.findings == (
-        Finding(".env.example", 1, 14, "gpt-4o", None),
-        Finding("app/llm.py", 1, 39, "gpt-3.5-turbo-0613", "gpt-3.5-turbo-0613"),
-        Finding("config/models.yaml", 1, 16, "claude-3-haiku-20240307", "claude-3-haiku-20240307"),
+        Finding(".env.example", 1, 14, "gpt-4o", None, Context.CONFIG, "OPENAI_MODEL"),
+        Finding(
+            "app/llm.py",
+            1,
+            39,
+            "gpt-3.5-turbo-0613",
+            "gpt-3.5-turbo-0613",
+            Context.CALL_ARGUMENT,
+            "client.chat.completions.create(model=)",
+        ),
+        Finding(
+            "config/models.yaml",
+            1,
+            16,
+            "claude-3-haiku-20240307",
+            "claude-3-haiku-20240307",
+            Context.CONFIG,
+            "summary_model",
+        ),
     )
     assert result.files_scanned == 3
     assert result.files_skipped == 0

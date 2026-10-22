@@ -32,3 +32,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0024](0024-severity-levels-and-ci-exit-code.md) | Severity levels, cloud forms of model IDs, and a CI exit code | Accepted |
 | [0025](0025-json-and-sarif-reports.md) | JSON and SARIF reports, with UNKNOWN IDs left out of SARIF | Accepted |
 | [0026](0026-github-action.md) | A composite GitHub Action in this repository | Accepted |
+| [0027](0027-python-context-with-tree-sitter.md) | Give Python findings their context with tree-sitter | Accepted |

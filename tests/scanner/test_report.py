@@ -61,6 +61,8 @@ def test_json_report(report: Report) -> None:
         "shutdown_is_earliest": False,
         "days_left": -185,
         "replacement": "claude-haiku-4-5-20251001",
+        "context": "assignment",
+        "detail": "A",
     }
     assert data["findings"][1]["shutdown"] is None
 
@@ -92,9 +94,10 @@ def test_sarif_leaves_out_unknown_ids(report: Report) -> None:
     first = results[0]
     assert first["ruleIndex"] == 0
     assert first["message"]["text"] == (
-        "claude-3-haiku-20240307: shut down on 2026-04-20; suggested replacement "
+        "claude-3-haiku-20240307 (assigned to A): shut down on 2026-04-20; suggested replacement "
         "claude-haiku-4-5-20251001 (checked on 2026-10-22)."
     )
+    assert first["properties"] == {"context": "assignment", "detail": "A"}
     location = first["locations"][0]["physicalLocation"]
     assert location["artifactLocation"] == {"uri": "app.py", "uriBaseId": "%SRCROOT%"}
     assert location["region"] == {"startLine": 1, "startColumn": 6, "endColumn": 29}

@@ -10,6 +10,7 @@ from typing import Any
 
 from modelbump import __version__
 from modelbump.registry import Registry
+from modelbump.scanner.context import Context
 from modelbump.scanner.scan import Finding, ScanResult
 from modelbump.scanner.severity import DEFAULT_SOON_DAYS, Assessment, Severity, assess
 
@@ -95,10 +96,14 @@ def render_text(report: Report) -> str:
         written = finding.model_id
         if finding.registry_id is not None and finding.registry_id != written:
             written += f" (= {finding.registry_id})"
-        lines.append(
+        line = (
             f"{finding.path}:{finding.line}:{finding.column}  {written}  "
             f"{item.assessment.severity.name}  {describe(item.assessment)}"
         )
+        place = where(finding)
+        if place:
+            line += f"  [{place}]"
+        lines.append(line)
     lines.append(summary_line(report))
     failure = failure_line(report)
     if failure:
@@ -150,6 +155,22 @@ def describe(assessment: Assessment) -> str:
     return text
 
 
+def where(finding: Finding) -> str | None:
+    """Where the ID sits, in words: ``assigned to MODEL``, ``in a comment``, ..."""
+    context, detail = finding.context, finding.detail
+    if context is Context.COMMENT:
+        return "in a comment"
+    if context is Context.DOCSTRING:
+        return "in a docstring"
+    if detail is None:
+        return None
+    if context is Context.CALL_ARGUMENT:
+        return f"in {detail}"
+    if context is Context.ASSIGNMENT:
+        return f"assigned to {detail}"
+    return f"value of {detail}"
+
+
 def plural(count: int, word: str) -> str:
     """``1 file``, ``2 files``."""
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
@@ -189,6 +210,8 @@ def _finding_json(item: AssessedFinding) -> dict[str, Any]:
         "shutdown_is_earliest": assessment.shutdown_is_earliest,
         "days_left": assessment.days_left,
         "replacement": assessment.replacement,
+        "context": finding.context.value,
+        "detail": finding.detail,
     }
 
 
@@ -254,9 +277,10 @@ def render_sarif(report: Report) -> str:
                 "ruleIndex": index[severity],
                 "level": levels[severity],
                 "message": {
-                    "text": f"{finding.model_id}: {describe(item.assessment)} "
-                    f"(checked on {report.checked_on})."
+                    "text": f"{finding.model_id}{_where_suffix(finding)}: "
+                    f"{describe(item.assessment)} (checked on {report.checked_on})."
                 },
+                "properties": {"context": finding.context.value, "detail": finding.detail},
                 "locations": [
                     {
                         "physicalLocation": {
@@ -292,6 +316,11 @@ def render_sarif(report: Report) -> str:
         ],
     }
     return json.dumps(sarif, indent=2) + "\n"
+
+
+def _where_suffix(finding: Finding) -> str:
+    place = where(finding)
+    return f" ({place})" if place else ""
 
 
 RENDERERS = {
