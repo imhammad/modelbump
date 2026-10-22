@@ -15,16 +15,18 @@ plain words (``ada``, ``davinci``); those count only when they are a whole
 quoted string, as in ``model="davinci"``.
 
 Wrapped forms are found too: ``anthropic.claude-3-haiku-20240307-v1`` yields
-the part after the dot, and ``openai/gpt-4o`` yields ``gpt-4o``.
+the part after the dot, ``openai/gpt-4o`` yields ``gpt-4o``, and Vertex AI's
+``claude-3-5-sonnet@20240620`` keeps its ``@`` date. Mapping these forms to a
+registry ID is the job of :mod:`modelbump.scanner.resolve`.
 """
 
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-_RUN = re.compile(r"[A-Za-z0-9._-]+")
+_RUN = re.compile(r"[A-Za-z0-9._-]+(?:@[0-9]{8})?")
 _SHAPE = re.compile(
-    r"(?:gpt|chatgpt|claude|gemini|text-embedding)-[a-z0-9.-]*[0-9][a-z0-9.-]*"
+    r"(?:gpt|chatgpt|claude|gemini|text-embedding)-[a-z0-9.-]*[0-9][a-z0-9.-]*(?:@[0-9]{8})?"
     r"|o[1-9](?:-[a-z0-9.-]+)?"
 )
 _QUOTES = "\"'`"

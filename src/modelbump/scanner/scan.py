@@ -6,6 +6,7 @@ from pathlib import Path
 from modelbump.registry import Registry
 from modelbump.scanner.files import iter_source_files, read_source
 from modelbump.scanner.ids import ModelIdFinder
+from modelbump.scanner.resolve import resolve
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,7 +18,9 @@ class Finding:
     line: int
     column: int
     model_id: str
-    in_registry: bool
+    """The ID exactly as written in the file."""
+    registry_id: str | None
+    """The registry ID it refers to (see :mod:`modelbump.scanner.resolve`), or None."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +56,7 @@ def scan_path(root: Path, registry: Registry) -> ScanResult:
         scanned += 1
         rel = path.relative_to(base).as_posix()
         findings.extend(
-            Finding(rel, m.line, m.column, m.model_id, m.in_registry) for m in finder.find(text)
+            Finding(rel, m.line, m.column, m.model_id, resolve(m.model_id, registry))
+            for m in finder.find(text)
         )
     return ScanResult(tuple(findings), scanned, skipped)

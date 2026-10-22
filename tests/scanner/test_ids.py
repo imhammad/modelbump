@@ -72,6 +72,8 @@ def test_wrapped_forms_yield_the_model_id(finder: ModelIdFinder) -> None:
     assert ids(finder, '"anthropic.claude-3-haiku-20240307-v1:0"') == ["claude-3-haiku-20240307-v1"]
     assert ids(finder, "model: openai/gpt-4o") == ["gpt-4o"]
     assert ids(finder, "models/gemini-2.0-flash") == ["gemini-2.0-flash"]
+    assert ids(finder, 'model="claude-3-5-sonnet@20240620"') == ["claude-3-5-sonnet@20240620"]
+    assert ids(finder, "user@20240620 claude-x@2024") == []
 
 
 def test_dots_inside_an_id_are_kept(finder: ModelIdFinder) -> None:
