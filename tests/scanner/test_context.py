@@ -71,7 +71,7 @@ def test_long_call_names_keep_their_end() -> None:
         ("settings.json", '  "model": "gpt-4o",\n', Place(Context.CONFIG, "model")),
         ("app.toml", 'model = "gpt-4o"\n', Place(Context.CONFIG, "model")),
         (".env.example", "export OPENAI_MODEL=gpt-4o\n", Place(Context.CONFIG, "OPENAI_MODEL")),
-        ("index.ts", 'const model = "gpt-4o";\n', Place(Context.TEXT)),
+        ("main.go", 'model := "gpt-4o"\n', Place(Context.TEXT)),
     ],
 )
 def test_config_and_text_places(path: str, text: str, expected: Place) -> None:
@@ -86,9 +86,66 @@ def test_config_and_text_places(path: str, text: str, expected: Place) -> None:
         ("a.YAML", "config"),
         (".env", "config"),
         (".env.local", "config"),
-        ("a.ts", "text"),
+        ("a.ts", "typescript"),
+        ("a.mts", "typescript"),
+        ("a.tsx", "tsx"),
+        ("a.js", "tsx"),
+        ("a.cjs", "tsx"),
+        ("a.go", "text"),
         ("a.ipynb", "text"),
     ],
 )
 def test_file_kind(path: str, kind: str) -> None:
     assert file_kind(path) == kind
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (
+            'await openai.chat.completions.create({ model: "gpt-4o", messages });',
+            Place(Context.CALL_ARGUMENT, "openai.chat.completions.create({model})"),
+        ),
+        (
+            "const llm = new ChatOpenAI({ modelName: 'gpt-4o' });",
+            Place(Context.CALL_ARGUMENT, "new ChatOpenAI({modelName})"),
+        ),
+        ("const m = google(`gemini-2.5-pro`);", Place(Context.CALL_ARGUMENT, "google(argument 1)")),
+        ('const MODEL = "gpt-4o";', Place(Context.ASSIGNMENT, "MODEL")),
+        ('config.model = "gpt-4o";', Place(Context.ASSIGNMENT, "config.model")),
+        ('const model = process.env.MODEL ?? "gpt-4o";', Place(Context.ASSIGNMENT, "model")),
+        ('const MODEL = ("gpt-4o");', Place(Context.ASSIGNMENT, "MODEL")),
+        ('function ask(q, model = "gpt-4o") {}', Place(Context.ASSIGNMENT, "model")),
+        ('const ask = ({ model = "gpt-4o" }) => model;', Place(Context.ASSIGNMENT, "model")),
+        ('class Bot { model = "gpt-4o"; }', Place(Context.ASSIGNMENT, "model")),
+        ('const cfg = { "model": "gpt-4o" };', Place(Context.STRING, "model")),
+        ('const models = ["gpt-4o"];', Place(Context.STRING)),
+        ("// was gpt-4o", Place(Context.COMMENT)),
+        ("/** Uses gpt-4o. */", Place(Context.COMMENT)),
+        ('const el = <Chat model="gpt-4o" />;', Place(Context.STRING, "model")),
+    ],
+)
+def test_javascript_places(code: str, expected: Place) -> None:
+    assert place_of("app.jsx", code + "\n") == [expected]
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ('const MODEL: string = "gpt-4o";', Place(Context.ASSIGNMENT, "MODEL")),
+        ('const MODEL = "gpt-4o" as const;', Place(Context.ASSIGNMENT, "MODEL")),
+        (
+            'function ask(q: string, model: string = "gpt-4o") {}',
+            Place(Context.ASSIGNMENT, "model"),
+        ),
+        (
+            'function ask(model?: string) {} ask("gpt-4o");',
+            Place(Context.CALL_ARGUMENT, "ask(argument 1)"),
+        ),
+        ('type Model = "gpt-4o" | "o3";', Place(Context.STRING)),
+        ('const x = <string>"gpt-4o";', Place(Context.STRING)),  # a cast, not JSX, in .ts
+    ],
+)
+def test_typescript_places(code: str, expected: Place) -> None:
+    found = place_of("app.ts", code + "\n")
+    assert found[0] == expected

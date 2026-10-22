@@ -15,6 +15,9 @@ while IFS= read -r pattern; do
     args+=(--exclude "$pattern")
   fi
 done <<< "${MB_EXCLUDE:-}"
+if [ "${MB_SKIP_COMMENTS:-false}" = "true" ]; then
+  args+=(--skip-comments)
+fi
 
 # Build and run ModelBump from the action's own copy of this repository.
 modelbump=(uv tool run --quiet --from "$GITHUB_ACTION_PATH" modelbump)

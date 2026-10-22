@@ -1,27 +1,35 @@
-"""Where in a file a model ID appears: a call argument, a variable, a comment, ... (ADR 0027).
+"""Where in a file a model ID appears: a call argument, a variable, a comment, ...
 
-Python files are parsed with tree-sitter, which also builds a tree for files
-that do not parse cleanly (Python 2, half-edited code), so a syntax error
-never hides a finding. Config files get the key the ID is the value of. Other
-files keep the plain-text finding without context.
+Python (ADR 0027), TypeScript and JavaScript (ADR 0028) files are parsed with
+tree-sitter, which also builds a tree for files that do not parse cleanly
+(Python 2, half-edited code), so a syntax error never hides a finding. Config
+files get the key the ID is the value of. Other files keep the plain-text
+finding without context.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
 
 import tree_sitter_python
+import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser
 
 PYTHON_SUFFIXES = frozenset({".py", ".pyi"})
+# TypeScript proper cannot use the TSX grammar (`<T>x` casts clash with JSX),
+# and JavaScript files often hold JSX, so they use the TSX grammar.
+TYPESCRIPT_SUFFIXES = frozenset({".ts", ".mts", ".cts"})
+TSX_SUFFIXES = frozenset({".tsx", ".js", ".jsx", ".mjs", ".cjs"})
 CONFIG_SUFFIXES = frozenset(
     {".json", ".jsonc", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env"}
 )
 _MAX_DETAIL = 60
 _CONFIG_KEY = re.compile(r"""^\s*(?:export\s+)?["']?([A-Za-z0-9_.-]+)["']?\s*[:=]""")
 _PYTHON = Language(tree_sitter_python.language())
+_TYPESCRIPT = Language(tree_sitter_typescript.language_typescript())
+_TSX = Language(tree_sitter_typescript.language_tsx())
 
 
 class Context(StrEnum):
@@ -55,11 +63,15 @@ class Place:
 
 
 def file_kind(path: str) -> str:
-    """``python``, ``config`` or ``text``, from a file name."""
+    """``python``, ``typescript``, ``tsx``, ``config`` or ``text``, from a file name."""
     name = PurePosixPath(path).name
     suffix = PurePosixPath(path).suffix.lower()
     if suffix in PYTHON_SUFFIXES:
         return "python"
+    if suffix in TYPESCRIPT_SUFFIXES:
+        return "typescript"
+    if suffix in TSX_SUFFIXES:
+        return "tsx"
     if suffix in CONFIG_SUFFIXES or name == ".env" or name.startswith(".env."):
         return "config"
     return "text"
@@ -72,7 +84,11 @@ def places(path: str, text: str, spots: Sequence[tuple[int, int, int]]) -> list[
     """
     kind = file_kind(path)
     if kind == "python":
-        return _python_places(text, spots)
+        return _tree_places(_PYTHON, _classify, text, spots)
+    if kind == "typescript":
+        return _tree_places(_TYPESCRIPT, _classify_js, text, spots)
+    if kind == "tsx":
+        return _tree_places(_TSX, _classify_js, text, spots)
     if kind == "config":
         lines = text.splitlines()
         return [_config_place(lines[line - 1], column) for line, column, _ in spots]
@@ -86,23 +102,30 @@ def _config_place(line: str, column: int) -> Place:
     return Place(Context.CONFIG, match.group(1))
 
 
-def _python_places(text: str, spots: Sequence[tuple[int, int, int]]) -> list[Place]:
+def _tree_places(
+    language: Language,
+    classify: Callable[[Node | None], Place],
+    text: str,
+    spots: Sequence[tuple[int, int, int]],
+) -> list[Place]:
+    # The finder counts characters; tree-sitter counts UTF-8 bytes.
     lines = text.splitlines(keepends=True)
     starts = [0]
     for line in lines:
         starts.append(starts[-1] + len(line.encode("utf-8")))
-    tree = Parser(_PYTHON).parse(text.encode("utf-8"))
+    tree = Parser(language).parse(text.encode("utf-8"))
     result = []
     for line_no, column, length in spots:
         line = lines[line_no - 1]
         start = starts[line_no - 1] + len(line[: column - 1].encode("utf-8"))
         end = start + len(line[column - 1 : column - 1 + length].encode("utf-8"))
         node = tree.root_node.descendant_for_byte_range(start, end)
-        result.append(_classify(node))
+        result.append(classify(node))
     return result
 
 
 def _classify(node: Node | None) -> Place:
+    """Classify a node in a Python tree."""
     while node is not None and node.type not in {"string", "comment"}:
         node = node.parent
     if node is None:
@@ -139,6 +162,82 @@ def _classify(node: Node | None) -> Place:
     if parent.type == "expression_statement":
         return Place(Context.DOCSTRING)
     return Place(Context.STRING)
+
+
+# Nodes an ID's string passes through on its way to what uses it:
+# ("gpt-4o"), "gpt-4o" as const, env.MODEL ?? "gpt-4o", cond ? "a" : "b".
+_JS_TRANSPARENT = frozenset(
+    {
+        "parenthesized_expression",
+        "as_expression",
+        "satisfies_expression",
+        "binary_expression",
+        "ternary_expression",
+    }
+)
+
+
+def _classify_js(node: Node | None) -> Place:
+    """Classify a node in a TypeScript or JavaScript tree."""
+    while node is not None and node.type not in {"string", "template_string", "comment"}:
+        node = node.parent
+    if node is None:
+        return Place(Context.STRING)
+    if node.type == "comment":
+        return Place(Context.COMMENT)
+    while node.parent is not None and node.parent.type in _JS_TRANSPARENT:
+        node = node.parent
+    parent = node.parent
+    if parent is None:
+        return Place(Context.STRING)
+    if parent.type == "pair" and _is_field(parent, "value", node):
+        key = _js_key(parent.child_by_field_name("key"))
+        options = parent.parent
+        call = _js_call_of(options.parent) if options is not None else None
+        if call is not None and options is not None and options.type == "object":
+            return Place(Context.CALL_ARGUMENT, _short(f"{call}({{{key}}})"))
+        return Place(Context.STRING, _short(key))
+    if parent.type == "arguments":
+        call = _js_call_of(parent)
+        if call is not None:
+            position = [c.id for c in parent.named_children].index(node.id) + 1
+            return Place(Context.CALL_ARGUMENT, _short(f"{call}(argument {position})"))
+    for kind, value_field, name_field in _JS_NAMED:
+        if parent.type == kind and _is_field(parent, value_field, node):
+            return Place(Context.ASSIGNMENT, _short(_text(parent.child_by_field_name(name_field))))
+    if parent.type == "jsx_attribute" and parent.named_children:
+        return Place(Context.STRING, _short(_text(parent.named_children[0])))
+    return Place(Context.STRING)
+
+
+# (node type, field holding the value, field holding the name)
+_JS_NAMED = (
+    ("variable_declarator", "value", "name"),
+    ("assignment_expression", "right", "left"),
+    ("public_field_definition", "value", "name"),
+    ("required_parameter", "value", "pattern"),
+    ("optional_parameter", "value", "pattern"),
+    ("assignment_pattern", "right", "left"),
+    ("object_assignment_pattern", "right", "left"),
+)
+
+
+def _js_call_of(arguments: Node | None) -> str | None:
+    if arguments is None or arguments.type != "arguments" or arguments.parent is None:
+        return None
+    call = arguments.parent
+    if call.type == "call_expression":
+        return _text(call.child_by_field_name("function"))
+    if call.type == "new_expression":
+        return "new " + _text(call.child_by_field_name("constructor"))
+    return None
+
+
+def _js_key(key: Node | None) -> str:
+    if key is not None and key.type == "string":
+        parts = [c for c in key.named_children if c.type == "string_fragment"]
+        return "".join(_text(part) for part in parts) or _text(key)
+    return _text(key)
 
 
 def _call_of(argument_list: Node | None) -> str | None:

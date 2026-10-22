@@ -28,6 +28,9 @@ inputs:
   exclude:
     description: Paths to skip, one pattern per line (for example `tests` or `*.ipynb`).
     default: ""
+  skip-comments:
+    description: Leave out model IDs found in comments and docstrings ("true" or "false").
+    default: "false"
   upload-sarif:
     description: >-
       Upload the findings to GitHub code scanning, so they show in the Security tab.
@@ -56,6 +59,7 @@ runs:
         MB_PATH: ${{ inputs.path }}
         MB_SOON_DAYS: ${{ inputs.soon-days }}
         MB_EXCLUDE: ${{ inputs.exclude }}
+        MB_SKIP_COMMENTS: ${{ inputs.skip-comments }}
       run: bash "$GITHUB_ACTION_PATH/action/scan.sh" sarif
 
     - name: Upload to code scanning
@@ -71,5 +75,6 @@ runs:
         MB_PATH: ${{ inputs.path }}
         MB_SOON_DAYS: ${{ inputs.soon-days }}
         MB_EXCLUDE: ${{ inputs.exclude }}
+        MB_SKIP_COMMENTS: ${{ inputs.skip-comments }}
         MB_FAIL_WITHIN: ${{ inputs.fail-within }}
       run: bash "$GITHUB_ACTION_PATH/action/scan.sh" check

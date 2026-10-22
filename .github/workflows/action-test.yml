@@ -33,6 +33,7 @@ jobs:
           path: tests/fixtures/action-demo
           exclude: |
             skipped
+          skip-comments: "true"
           upload-sarif: "false"
       - name: Check the SARIF report
         env:

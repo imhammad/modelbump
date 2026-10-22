@@ -2,7 +2,7 @@
 
 **Job:** answer "which LLM model IDs does this repository depend on, and where?"
 
-**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md), [ADR 0026](../adr/0026-github-action.md), [ADR 0027](../adr/0027-python-context-with-tree-sitter.md)
+**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md), [ADR 0026](../adr/0026-github-action.md), [ADR 0027](../adr/0027-python-context-with-tree-sitter.md), [ADR 0028](../adr/0028-typescript-and-javascript-context.md)
 
 ```mermaid
 flowchart LR
@@ -11,7 +11,7 @@ flowchart LR
     registry[(Registry)] --> ids
     ids --> resolve[resolve.py<br/>cloud forms to registry IDs]
     resolve --> scan[scan.py<br/>Finding: path, line, column, ID]
-    context[context.py<br/>tree-sitter for Python,<br/>keys for config] --> scan
+    context[context.py<br/>tree-sitter for Python, TS, JS;<br/>keys for config] --> scan
     scan --> severity[severity.py<br/>RETIRED ... UNKNOWN on a day]
     registry --> severity
     severity --> report[report.py<br/>text, JSON, SARIF]
@@ -38,14 +38,15 @@ Each finding says where the ID sits, so a real use stands out from a mention:
 | Context | Example | Text report shows |
 |---------|---------|-------------------|
 | `call_argument` | `client.messages.create(model="...")` | `[in client.messages.create(model=)]` |
+| `call_argument` (TS/JS) | `openai.chat.completions.create({ model: "..." })` | `[in openai.chat.completions.create({model})]` |
 | `assignment` | `MODEL = "..."`, `def ask(model="...")` | `[assigned to MODEL]` |
 | `string` | `{"model": "..."}`, `["..."]` | `[value of model]` for a dict value |
 | `docstring` | `"""Uses gpt-4o."""` | `[in a docstring]` |
 | `comment` | `# was gpt-4o` | `[in a comment]` |
 | `config` | `summary_model: ...` in YAML | `[value of summary_model]` |
-| `text` | files without a parser yet (TypeScript, notebooks, ...) | nothing |
+| `text` | files without a parser yet (notebooks, Go, Java, ...) | nothing |
 
-Python is parsed with tree-sitter, so files with syntax errors or Python 2 code still get context. `--skip-comments` leaves out comments and docstrings. JSON reports carry `context` and `detail`, and SARIF results carry them in `properties`.
+Python, TypeScript and JavaScript are parsed with tree-sitter, so files with syntax errors or Python 2 code still get context. In TS/JS, a value in an options object passed to a call counts as a call argument, and fallbacks such as `process.env.MODEL ?? "..."` count as the assignment they feed. `--skip-comments` leaves out comments and docstrings. JSON reports carry `context` and `detail`, and SARIF results carry them in `properties`.
 
 ## Severity
 
@@ -116,6 +117,7 @@ jobs:
 | `fail-within` | empty | Fail the job if a model is retired or shuts down within this many days; empty never fails |
 | `soon-days` | `90` | Warning window for `RETIRING_SOON` |
 | `exclude` | empty | Paths to skip, one pattern per line |
+| `skip-comments` | `false` | Leave out IDs in comments and docstrings |
 | `upload-sarif` | `true` | Upload the findings to code scanning (needs `security-events: write`; private repositories also need GitHub Advanced Security) |
 
 The findings appear in the Security tab and on pull request lines, and the text report appears in the job summary.
@@ -126,5 +128,4 @@ Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.
 
 ## Not yet
 
-- A TypeScript and JavaScript parser for the same context.
 - IDs built from parts, such as `f"gpt-{version}"`.
