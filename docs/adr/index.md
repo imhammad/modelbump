@@ -34,3 +34,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0026](0026-github-action.md) | A composite GitHub Action in this repository | Accepted |
 | [0027](0027-python-context-with-tree-sitter.md) | Give Python findings their context with tree-sitter | Accepted |
 | [0028](0028-typescript-and-javascript-context.md) | TypeScript and JavaScript context, and option objects as call arguments | Accepted |
+| [0029](0029-scanner-evaluation-set.md) | Evaluate the scanner on snapshots taken just before real migrations | Accepted |
