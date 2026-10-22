@@ -1,6 +1,5 @@
 """Command-line interface for ModelBump."""
 
-from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -9,7 +8,14 @@ import typer
 
 from modelbump import __version__
 from modelbump.registry import Status, load_registry
-from modelbump.scanner import DEFAULT_SOON_DAYS, Assessment, Severity, assess, scan_path
+from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
+from modelbump.scanner.report import (
+    RENDERERS,
+    OutputFormat,
+    build_report,
+    failure_line,
+    summary_line,
+)
 
 app = typer.Typer(
     name="modelbump",
@@ -66,63 +72,32 @@ def scan(
             help="Check as if today were this day (YYYY-MM-DD), to replay the past.",
         ),
     ] = None,
+    output_format: Annotated[
+        OutputFormat,
+        typer.Option("--format", help="Report format: text, json or sarif."),
+    ] = OutputFormat.TEXT,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
+    ] = None,
 ) -> None:
     """Find the LLM model IDs in a repository's code and config, and how urgent each is."""
     registry = load_registry()
-    result = scan_path(path, registry)
     day = today.date() if today is not None else date.today()
-    counts: Counter[Severity] = Counter()
-    failing = 0
-    for finding in result.findings:
-        assessment = assess(finding.registry_id, registry, day, soon_days)
-        counts[assessment.severity] += 1
-        days_left = assessment.days_left
-        if fail_within is not None and days_left is not None and days_left <= fail_within:
-            failing += 1
-        written = finding.model_id
-        if finding.registry_id is not None and finding.registry_id != written:
-            written += f" (= {finding.registry_id})"
-        typer.echo(
-            f"{finding.path}:{finding.line}:{finding.column}  {written}  "
-            f"{assessment.severity.name}  {_describe(assessment)}"
-        )
-    files = f"scanned {_plural(result.files_scanned, 'file')}"
-    if result.files_skipped:
-        files += f", skipped {result.files_skipped} too big or binary"
-    if not result.findings:
-        typer.echo(f"No model IDs found ({files}).")
-        return
-    ids = _plural(len(result.findings), "model ID")
-    in_files = _plural(len({finding.path for finding in result.findings}), "file")
-    levels = ", ".join(f"{counts[s]} {s.name}" for s in Severity if counts[s])
-    typer.echo(f"Found {ids} in {in_files} ({files}): {levels}.")
-    if failing:
-        verb = "is" if failing == 1 else "are"
-        typer.echo(
-            f"Failed: {_plural(failing, 'model ID')} {verb} retired "
-            f"or shut down within {_plural(fail_within or 0, 'day')}."
-        )
-        raise typer.Exit(code=1)
-
-
-def _describe(assessment: Assessment) -> str:
-    if assessment.shutdown is None or assessment.days_left is None:
-        return "no retirement announced"
-    days = assessment.days_left
-    if days <= 0:
-        text = f"shut down on {assessment.shutdown}"
-        if assessment.shutdown_is_earliest:
-            text = f"shut down no earlier than {assessment.shutdown}"
+    report = build_report(scan_path(path, registry), registry, day, soon_days, fail_within)
+    rendered = RENDERERS[output_format](report)
+    if output is None:
+        typer.echo(rendered, nl=False)
     else:
-        when = "no earlier than" if assessment.shutdown_is_earliest else "on"
-        text = f"shuts down {when} {assessment.shutdown} (in {_plural(days, 'day')})"
-    if assessment.replacement:
-        text += f"; suggested replacement {assessment.replacement}"
-    return text
-
-
-def _plural(count: int, word: str) -> str:
-    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Wrote {output_format.value} report to {output}.")
+        typer.echo(summary_line(report))
+    failure = failure_line(report)
+    if failure is not None:
+        if output is not None or output_format is not OutputFormat.TEXT:
+            # Keep the screen output a valid JSON or SARIF document.
+            typer.echo(failure, err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command()

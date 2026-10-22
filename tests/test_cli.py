@@ -1,5 +1,6 @@
 """Smoke tests for the command-line interface."""
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -115,3 +116,34 @@ def test_check_earliest_possible_date() -> None:
     result = runner.invoke(app, ["check", "gemini-2.0-flash"])
     assert result.exit_code == 0
     assert "RETIRED since 2026-06-01 (the earliest possible date" in result.stdout
+
+
+def test_scan_json_to_screen_stays_valid_json(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('A = "claude-3-haiku-20240307"\n')
+    args = ["scan", str(tmp_path), "--today", "2026-10-22", "--format", "json"]
+    result = runner.invoke(app, [*args, "--fail-within", "0"])
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["failed"] is True
+    assert data["findings"][0]["severity"] == "retired"
+    assert "Failed: 1 model ID is retired" in result.stderr
+
+
+def test_scan_sarif_to_a_file(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('A = "claude-3-haiku-20240307"\n')
+    out = tmp_path / "out" / "modelbump.sarif"
+    out.parent.mkdir()
+    args = ["scan", str(tmp_path / "app.py"), "--today", "2026-10-22"]
+    result = runner.invoke(app, [*args, "--format", "sarif", "--output", str(out)])
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [
+        f"Wrote sarif report to {out}.",
+        "Found 1 model ID in 1 file (scanned 1 file): 1 RETIRED.",
+    ]
+    sarif = json.loads(out.read_text())
+    assert sarif["runs"][0]["results"][0]["ruleId"] == "modelbump/retired"
+
+
+def test_scan_rejects_an_unknown_format(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["scan", str(tmp_path), "--format", "xml"])
+    assert result.exit_code == 2

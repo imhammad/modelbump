@@ -77,6 +77,7 @@ nav:
       - adr/0022-paper-in-latex.md
       - adr/0023-scanner-finds-ids-as-text-first.md
       - adr/0024-severity-levels-and-ci-exit-code.md
+      - adr/0025-json-and-sarif-reports.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

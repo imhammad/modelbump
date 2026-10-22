@@ -2,7 +2,7 @@
 
 **Job:** answer "which LLM model IDs does this repository depend on, and where?"
 
-**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md)
+**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md)
 
 ```mermaid
 flowchart LR
@@ -13,7 +13,8 @@ flowchart LR
     resolve --> scan[scan.py<br/>Finding: path, line, column, ID]
     scan --> severity[severity.py<br/>RETIRED ... UNKNOWN on a day]
     registry --> severity
-    severity --> cli[modelbump scan]
+    severity --> report[report.py<br/>text, JSON, SARIF]
+    report --> cli[modelbump scan]
 ```
 
 ## How an ID is recognised
@@ -50,6 +51,22 @@ Found 2 model IDs in 2 files (scanned 14 files): 1 RETIRED, 1 UNKNOWN.
 Failed: 1 model ID is retired or shut down within 30 days.
 ```
 
+## Report formats
+
+| `--format` | For | Contents |
+|------------|-----|----------|
+| `text` (default) | People | One line per finding, a summary, and a failure line |
+| `json` | Scripts | Check day, settings, counts, and every finding with all its fields |
+| `sarif` | GitHub code scanning | SARIF 2.1.0: rules `modelbump/retired` (error), `modelbump/retiring-soon` (warning), `modelbump/deprecated` (note). UNKNOWN IDs are left out |
+
+`--output FILE` writes the report to a file. With JSON or SARIF on the screen, a failure message goes to stderr so the screen output stays valid. For GitHub, scan the repository root so the paths match:
+
+```console
+$ modelbump scan . --format sarif --output modelbump.sarif
+Wrote sarif report to modelbump.sarif.
+Found 2 model IDs in 2 files (scanned 14 files): 1 RETIRED, 1 UNKNOWN.
+```
+
 ## Files scanned
 
 Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned.
@@ -57,4 +74,4 @@ Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.
 ## Not yet
 
 - Call context from tree-sitter parsers (Python, then TypeScript).
-- JSON and SARIF output, and the GitHub Action.
+- The GitHub Action.
