@@ -43,6 +43,12 @@ class Report:
     checked_on: date
     soon_days: int
     fail_within: int | None
+    root_uri: str = ""
+    """Where the scan root is, relative to the repository (``""`` or ``"sub/dir/"``).
+
+    SARIF paths must be relative to the repository, while the other formats
+    show paths relative to the scan root.
+    """
 
     @property
     def counts(self) -> Counter[Severity]:
@@ -68,13 +74,14 @@ def build_report(
     checked_on: date,
     soon_days: int = DEFAULT_SOON_DAYS,
     fail_within: int | None = None,
+    root_uri: str = "",
 ) -> Report:
     """Assess every finding of ``result`` on ``checked_on``."""
     items = tuple(
         AssessedFinding(f, assess(f.registry_id, registry, checked_on, soon_days))
         for f in result.findings
     )
-    return Report(result, items, checked_on, soon_days, fail_within)
+    return Report(result, items, checked_on, soon_days, fail_within, root_uri)
 
 
 # Text ------------------------------------------------------------------------
@@ -219,8 +226,8 @@ def rule_id(severity: Severity) -> str:
 def render_sarif(report: Report) -> str:
     """SARIF 2.1.0, the format GitHub code scanning reads.
 
-    Paths are relative to the scan root, so scan the repository root when the
-    report is uploaded to GitHub.
+    Paths start with ``root_uri``, so they are relative to the repository
+    when ``modelbump scan`` runs from the repository root.
     """
     rules = [
         {
@@ -254,7 +261,7 @@ def render_sarif(report: Report) -> str:
                     {
                         "physicalLocation": {
                             "artifactLocation": {
-                                "uri": finding.path,
+                                "uri": report.root_uri + finding.path,
                                 "uriBaseId": "%SRCROOT%",
                             },
                             "region": {

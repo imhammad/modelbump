@@ -1,0 +1,75 @@
+# The ModelBump GitHub Action (ADR 0026). Use it from another repository:
+#
+#   - uses: imhammad/modelbump@v0.1.0
+#     with:
+#       fail-within: "30"
+#
+# It installs ModelBump from this repository at the same version, so the
+# action and the scanner can never drift apart.
+name: ModelBump scan
+description: Find the LLM model IDs in your code and config, and warn before providers retire them.
+author: Hammad Hassan
+branding:
+  icon: alert-triangle
+  color: orange
+
+inputs:
+  path:
+    description: Folder to scan, relative to the repository root.
+    default: "."
+  fail-within:
+    description: >-
+      Fail the job if a model is retired or shuts down within this many days.
+      Leave empty to report without ever failing.
+    default: ""
+  soon-days:
+    description: Mark a model RETIRING_SOON when it shuts down within this many days.
+    default: "90"
+  exclude:
+    description: Paths to skip, one pattern per line (for example `tests` or `*.ipynb`).
+    default: ""
+  upload-sarif:
+    description: >-
+      Upload the findings to GitHub code scanning, so they show in the Security tab.
+      Needs `permissions: security-events: write`.
+    default: "true"
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF report the action wrote.
+    value: ${{ steps.sarif.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv and Python
+      uses: astral-sh/setup-uv@v10.3.1
+      with:
+        python-version: "3.12"
+
+    # Inputs reach the script as environment variables, never pasted into the
+    # command, so a crafted input cannot run commands.
+    - name: Write the SARIF report
+      id: sarif
+      shell: bash
+      env:
+        MB_PATH: ${{ inputs.path }}
+        MB_SOON_DAYS: ${{ inputs.soon-days }}
+        MB_EXCLUDE: ${{ inputs.exclude }}
+      run: bash "$GITHUB_ACTION_PATH/action/scan.sh" sarif
+
+    - name: Upload to code scanning
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ steps.sarif.outputs.file }}
+        category: modelbump
+
+    - name: Check model retirements
+      shell: bash
+      env:
+        MB_PATH: ${{ inputs.path }}
+        MB_SOON_DAYS: ${{ inputs.soon-days }}
+        MB_EXCLUDE: ${{ inputs.exclude }}
+        MB_FAIL_WITHIN: ${{ inputs.fail-within }}
+      run: bash "$GITHUB_ACTION_PATH/action/scan.sh" check

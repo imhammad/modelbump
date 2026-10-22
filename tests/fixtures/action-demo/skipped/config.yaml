@@ -1,0 +1,2 @@
+# Excluded in the action test, so this retired model must not be reported.
+model: gpt-3.5-turbo-0613

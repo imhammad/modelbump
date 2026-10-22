@@ -76,6 +76,12 @@ def scan(
         OutputFormat,
         typer.Option("--format", help="Report format: text, json or sarif."),
     ] = OutputFormat.TEXT,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Skip paths matching this pattern, e.g. 'tests' or '*.ipynb'. Repeat for more.",
+        ),
+    ] = None,
     output: Annotated[
         Path | None,
         typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
@@ -84,7 +90,8 @@ def scan(
     """Find the LLM model IDs in a repository's code and config, and how urgent each is."""
     registry = load_registry()
     day = today.date() if today is not None else date.today()
-    report = build_report(scan_path(path, registry), registry, day, soon_days, fail_within)
+    result = scan_path(path, registry, exclude or ())
+    report = build_report(result, registry, day, soon_days, fail_within, _root_uri(path))
     rendered = RENDERERS[output_format](report)
     if output is None:
         typer.echo(rendered, nl=False)
@@ -98,6 +105,16 @@ def scan(
             # Keep the screen output a valid JSON or SARIF document.
             typer.echo(failure, err=True)
         raise typer.Exit(code=1)
+
+
+def _root_uri(path: Path) -> str:
+    """The scan root relative to the working directory, for SARIF paths."""
+    base = path.parent if path.is_file() else path
+    try:
+        relative = base.relative_to(Path.cwd()).as_posix()
+    except ValueError:
+        return ""
+    return "" if relative == "." else relative + "/"
 
 
 @app.command()

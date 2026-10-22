@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from modelbump import __version__
@@ -147,3 +148,39 @@ def test_scan_sarif_to_a_file(tmp_path: Path) -> None:
 def test_scan_rejects_an_unknown_format(tmp_path: Path) -> None:
     result = runner.invoke(app, ["scan", str(tmp_path), "--format", "xml"])
     assert result.exit_code == 2
+
+
+def test_scan_exclude_can_be_repeated(tmp_path: Path) -> None:
+    for rel in ["app.py", "tests/test_app.py", "notebooks/try.ipynb"]:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(
+        app, ["scan", str(tmp_path), "--exclude", "tests", "--exclude", "*.ipynb"]
+    )
+    assert result.exit_code == 0
+    assert "Found 1 model ID in 1 file (scanned 1 file): 1 UNKNOWN." in result.stdout
+
+
+def test_scan_sarif_paths_are_relative_to_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "app.py").write_text('A = "claude-3-haiku-20240307"\n')
+    monkeypatch.chdir(tmp_path)
+
+    def first_uri(target: str) -> str:
+        result = runner.invoke(app, ["scan", target, "--format", "sarif"])
+        location = json.loads(result.stdout)["runs"][0]["results"][0]["locations"][0]
+        uri: str = location["physicalLocation"]["artifactLocation"]["uri"]
+        return uri
+
+    assert first_uri(".") == "sub/app.py"
+    assert first_uri("sub") == "sub/app.py"
+    assert first_uri("sub/app.py") == "sub/app.py"
+    monkeypatch.chdir(tmp_path / "sub")
+    assert first_uri(str(tmp_path / "sub")) == "app.py"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert first_uri(str(tmp_path / "sub")) == "app.py"

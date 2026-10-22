@@ -2,7 +2,7 @@
 
 **Job:** answer "which LLM model IDs does this repository depend on, and where?"
 
-**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md)
+**Code:** `src/modelbump/scanner/` · **Command:** `modelbump scan PATH` · **Decisions:** [ADR 0023](../adr/0023-scanner-finds-ids-as-text-first.md), [ADR 0024](../adr/0024-severity-levels-and-ci-exit-code.md), [ADR 0025](../adr/0025-json-and-sarif-reports.md), [ADR 0026](../adr/0026-github-action.md)
 
 ```mermaid
 flowchart LR
@@ -67,11 +67,46 @@ Wrote sarif report to modelbump.sarif.
 Found 2 model IDs in 2 files (scanned 14 files): 1 RETIRED, 1 UNKNOWN.
 ```
 
+## In GitHub Actions
+
+```yaml
+name: ModelBump
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"  # every Monday, to catch new retirement notices
+
+permissions:
+  contents: read
+  security-events: write  # to upload findings to code scanning
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: imhammad/modelbump@main  # use a release tag once v0.1.0 is out
+        with:
+          fail-within: "30"
+          exclude: |
+            tests
+            *.ipynb
+```
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `path` | `.` | Folder to scan, relative to the repository root |
+| `fail-within` | empty | Fail the job if a model is retired or shuts down within this many days; empty never fails |
+| `soon-days` | `90` | Warning window for `RETIRING_SOON` |
+| `exclude` | empty | Paths to skip, one pattern per line |
+| `upload-sarif` | `true` | Upload the findings to code scanning (needs `security-events: write`; private repositories also need GitHub Advanced Security) |
+
+The findings appear in the Security tab and on pull request lines, and the text report appears in the job summary.
+
 ## Files scanned
 
-Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned.
+Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned. `--exclude PATTERN` (repeatable) skips more: `tests` drops that folder, `*.ipynb` drops every notebook, and `*/fixtures` drops fixtures folders at any depth.
 
 ## Not yet
 
 - Call context from tree-sitter parsers (Python, then TypeScript).
-- The GitHub Action.

@@ -1,0 +1,62 @@
+name: Action
+
+# Runs the GitHub Action from this checkout (`uses: ./`) on a small demo app,
+# so a change to action.yml, action/ or the scanner cannot break it unseen.
+on:
+  pull_request:
+    paths:
+      - "action.yml"
+      - "action/**"
+      - "src/**"
+      - "tests/fixtures/action-demo/**"
+      - ".github/workflows/action-test.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Action reports without failing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the action
+        id: scan
+        uses: ./
+        with:
+          path: tests/fixtures/action-demo
+          exclude: |
+            skipped
+          upload-sarif: "false"
+      - name: Check the SARIF report
+        env:
+          SARIF: ${{ steps.scan.outputs.sarif-file }}
+        run: |
+          jq -e '.runs[0].results | length == 1' "$SARIF"
+          jq -e '.runs[0].results[0].ruleId == "modelbump/retired"' "$SARIF"
+          jq -e '.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri
+                 == "tests/fixtures/action-demo/app.py"' "$SARIF"
+
+  fail:
+    name: Action fails on a retired model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the action with a threshold
+        id: scan
+        continue-on-error: true
+        uses: ./
+        with:
+          path: tests/fixtures/action-demo
+          fail-within: "30"
+          upload-sarif: "false"
+      - name: Check that the step failed
+        env:
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: test "$OUTCOME" = "failure"

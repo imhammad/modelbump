@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Runs `modelbump scan` for the GitHub Action (action.yml, ADR 0026).
+#   scan.sh sarif   write the SARIF report and set the `file` output
+#   scan.sh check   print the findings, add them to the job summary, and exit 1
+#                   if a model is retired or shuts down within MB_FAIL_WITHIN days
+set -euo pipefail
+
+mode="${1:-}"
+args=("${MB_PATH:-.}" --soon-days "${MB_SOON_DAYS:-90}")
+while IFS= read -r pattern; do
+  # Trim spaces at both ends.
+  pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+  pattern="${pattern%"${pattern##*[![:space:]]}"}"
+  if [ -n "$pattern" ]; then
+    args+=(--exclude "$pattern")
+  fi
+done <<< "${MB_EXCLUDE:-}"
+
+# Build and run ModelBump from the action's own copy of this repository.
+modelbump=(uv tool run --quiet --from "$GITHUB_ACTION_PATH" modelbump)
+
+case "$mode" in
+  sarif)
+    file="$RUNNER_TEMP/modelbump.sarif"
+    "${modelbump[@]}" scan "${args[@]}" --format sarif --output "$file"
+    echo "file=$file" >> "$GITHUB_OUTPUT"
+    ;;
+  check)
+    if [ -n "${MB_FAIL_WITHIN:-}" ]; then
+      args+=(--fail-within "$MB_FAIL_WITHIN")
+    fi
+    report="$RUNNER_TEMP/modelbump.txt"
+    status=0
+    "${modelbump[@]}" scan "${args[@]}" > "$report" || status=$?
+    cat "$report"
+    {
+      echo "## ModelBump"
+      echo
+      echo '```'
+      cat "$report"
+      echo '```'
+    } >> "$GITHUB_STEP_SUMMARY"
+    exit "$status"
+    ;;
+  *)
+    echo "usage: scan.sh sarif|check" >&2
+    exit 2
+    ;;
+esac

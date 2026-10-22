@@ -1,7 +1,8 @@
 """Choose which files in a repository to scan, and read them as text."""
 
+import fnmatch
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 # Folders that hold tools, caches, build output or other people's code.
@@ -88,17 +89,41 @@ def is_scannable(path: Path) -> bool:
     return path.suffix.lower() in SCAN_SUFFIXES
 
 
-def iter_source_files(root: Path) -> Iterator[Path]:
+def is_excluded(rel_path: str, exclude: Sequence[str]) -> bool:
+    """Return True if a path relative to the scan root matches an exclude pattern.
+
+    Patterns use shell wildcards on the whole ``/``-separated path, and ``*``
+    also matches ``/``: ``tests`` drops the tests folder, ``*.ipynb`` drops
+    every notebook, and ``src/*/fixtures`` drops those folders at any depth.
+    """
+    return any(fnmatch.fnmatchcase(rel_path, pattern.strip("/")) for pattern in exclude)
+
+
+def iter_source_files(root: Path, exclude: Sequence[str] = ()) -> Iterator[Path]:
     """Yield every scannable file under ``root``, in a stable sorted order.
 
-    Symbolic links are never followed, so a scan cannot leave the repository.
+    Folders and files matching an ``exclude`` pattern are skipped. Symbolic
+    links are never followed, so a scan cannot leave the repository.
     """
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        base = Path(dirpath)
+        dirnames[:] = sorted(
+            d
+            for d in dirnames
+            if d not in SKIP_DIRS and not is_excluded(_relative(base / d, root), exclude)
+        )
         for name in sorted(filenames):
-            path = Path(dirpath) / name
-            if not path.is_symlink() and is_scannable(path):
+            path = base / name
+            if (
+                not path.is_symlink()
+                and is_scannable(path)
+                and not is_excluded(_relative(path, root), exclude)
+            ):
                 yield path
+
+
+def _relative(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
 
 
 def read_source(path: Path) -> str | None:

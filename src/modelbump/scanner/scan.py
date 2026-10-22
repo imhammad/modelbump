@@ -1,5 +1,6 @@
 """Scan a repository, or one file, for model IDs."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,18 +34,19 @@ class ScanResult:
     """Files with a code or config name that were too big or binary."""
 
 
-def scan_path(root: Path, registry: Registry) -> ScanResult:
+def scan_path(root: Path, registry: Registry, exclude: Sequence[str] = ()) -> ScanResult:
     """Scan ``root`` (a folder or a single file) for model IDs.
 
     A file given directly is scanned whatever its name; a folder is walked
-    with the rules in :mod:`modelbump.scanner.files`.
+    with the rules in :mod:`modelbump.scanner.files`, skipping paths that match
+    an ``exclude`` pattern.
     """
     finder = ModelIdFinder(model_id for _, model in registry for model_id in model.all_ids())
     if root.is_file():
         paths = [root]
         base = root.parent
     else:
-        paths = list(iter_source_files(root))
+        paths = list(iter_source_files(root, exclude))
         base = root
     findings: list[Finding] = []
     scanned = skipped = 0

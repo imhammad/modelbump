@@ -54,3 +54,25 @@ def test_read_source_skips_big_and_binary_files(tmp_path: Path) -> None:
     assert read_source(binary) is None
     assert read_source(text) == "model = 'gpt-4o' # caf�\n"
     assert read_source(tmp_path / "missing.py") is None
+
+
+@pytest.mark.parametrize(
+    ("patterns", "expected"),
+    [
+        ((), ["app.py", "nb/a.ipynb", "src/main.py", "src/fixtures/x.py", "tests/test_a.py"]),
+        (("tests",), ["app.py", "nb/a.ipynb", "src/main.py", "src/fixtures/x.py"]),
+        (("tests/",), ["app.py", "nb/a.ipynb", "src/main.py", "src/fixtures/x.py"]),
+        (("*.ipynb",), ["app.py", "src/main.py", "src/fixtures/x.py", "tests/test_a.py"]),
+        (("*/fixtures", "app.py"), ["nb/a.ipynb", "src/main.py", "tests/test_a.py"]),
+        (("src/main.py",), ["app.py", "nb/a.ipynb", "src/fixtures/x.py", "tests/test_a.py"]),
+    ],
+)
+def test_walk_skips_excluded_paths(
+    tmp_path: Path, patterns: tuple[str, ...], expected: list[str]
+) -> None:
+    for rel in ["app.py", "nb/a.ipynb", "src/main.py", "src/fixtures/x.py", "tests/test_a.py"]:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x = 1\n")
+    found = [p.relative_to(tmp_path).as_posix() for p in iter_source_files(tmp_path, patterns)]
+    assert found == expected
