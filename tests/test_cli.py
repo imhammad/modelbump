@@ -1,5 +1,7 @@
 """Smoke tests for the command-line interface."""
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from modelbump import __version__
@@ -14,10 +16,26 @@ def test_version_flag_prints_version() -> None:
     assert result.stdout.strip() == f"modelbump {__version__}"
 
 
-def test_scan_command_exists() -> None:
-    result = runner.invoke(app, ["scan", "."])
+def test_scan_lists_findings_with_their_status(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "claude-3-haiku-20240307"\nOTHER = "gpt-9-turbo"\n')
+    result = runner.invoke(app, ["scan", str(tmp_path)])
     assert result.exit_code == 0
-    assert "not implemented yet" in result.stdout
+    assert "app.py:1:10  claude-3-haiku-20240307  retired" in result.stdout
+    assert "app.py:2:10  gpt-9-turbo  not in registry" in result.stdout
+    assert "Found 2 model IDs in 1 file (scanned 1 file)." in result.stdout
+
+
+def test_scan_reports_when_nothing_is_found(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("print('hello')\n")
+    (tmp_path / "big.json").write_text("x" * 1_000_001)
+    result = runner.invoke(app, ["scan", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "No model IDs found (scanned 1 file, skipped 1 too big or binary)." in result.stdout
+
+
+def test_scan_rejects_a_missing_path(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["scan", str(tmp_path / "nope")])
+    assert result.exit_code == 2
 
 
 def test_check_known_retired_model() -> None:

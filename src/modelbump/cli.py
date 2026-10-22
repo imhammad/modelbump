@@ -1,12 +1,14 @@
 """Command-line interface for ModelBump."""
 
 from datetime import date
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from modelbump import __version__
 from modelbump.registry import Status, load_registry
+from modelbump.scanner import scan_path
 
 app = typer.Typer(
     name="modelbump",
@@ -38,9 +40,33 @@ def main(
 
 
 @app.command()
-def scan(path: Annotated[str, typer.Argument(help="Repository to scan.")] = ".") -> None:
-    """Find LLM model dependencies in a repository (coming in Phase 2)."""
-    typer.echo(f"Scanning {path} ... not implemented yet.")
+def scan(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or file to scan.", exists=True, resolve_path=True),
+    ] = Path("."),
+) -> None:
+    """Find the LLM model IDs in a repository's code and config."""
+    registry = load_registry()
+    result = scan_path(path, registry)
+    today = date.today()
+    for finding in result.findings:
+        found = registry.get(finding.model_id)
+        status = found[1].status_on(today).value if found else "not in registry"
+        typer.echo(f"{finding.path}:{finding.line}:{finding.column}  {finding.model_id}  {status}")
+    files = f"scanned {_plural(result.files_scanned, 'file')}"
+    if result.files_skipped:
+        files += f", skipped {result.files_skipped} too big or binary"
+    if not result.findings:
+        typer.echo(f"No model IDs found ({files}).")
+        return
+    ids = _plural(len(result.findings), "model ID")
+    in_files = _plural(len({finding.path for finding in result.findings}), "file")
+    typer.echo(f"Found {ids} in {in_files} ({files}).")
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
 
 
 @app.command()

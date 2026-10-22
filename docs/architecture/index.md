@@ -19,7 +19,7 @@ flowchart LR
 | Stage | Responsibility | Status |
 |-------|----------------|--------|
 | [Registry](registry.md) | Which model IDs are retired, and when | v1 (Phase 1) |
-| Scanner | Find model IDs in code and config; match them against retirement dates | Planned (Phase 2) |
+| [Scanner](scanner.md) | Find model IDs in code and config; match them against retirement dates | In progress (Phase 2) |
 | Suite synthesizer | Build regression test cases and oracles from the target repo | Planned (Phase 5) |
 | Runner | Call models with caching, retries and a cost budget | Planned (Phase 3) |
 | Stats engine | Decide REGRESSED / EQUIVALENT / INCONCLUSIVE per test case | Planned (Phase 4) |
