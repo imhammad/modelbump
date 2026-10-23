@@ -56,19 +56,25 @@ def make_snapshots(folder: Path) -> None:
             target.write_text(text)
 
 
-def test_first_warning_is_the_notice_day() -> None:
-    assert first_warning(
-        "claude-3-haiku-20240307", REGISTRY, date(2024, 1, 1), date(2026, 5, 1)
-    ) == date(2026, 2, 19)
-    # Not announced yet on the end day.
-    assert (
-        first_warning("claude-3-haiku-20240307", REGISTRY, date(2024, 1, 1), date(2026, 1, 1))
-        is None
+def test_first_warning() -> None:
+    assert first_warning("claude-3-haiku-20240307", REGISTRY, date(2026, 5, 1)) == (
+        date(2026, 2, 19),
+        "notice",
     )
-    # Known from the start.
-    start = date(2026, 3, 1)
-    assert first_warning("claude-3-haiku-20240307", REGISTRY, start, date(2026, 5, 1)) == start
-    assert first_warning("gpt-4o", REGISTRY, start, date(2026, 5, 1)) is None
+    assert first_warning("claude-3-haiku-20240307", REGISTRY, date(2026, 1, 1)) == (
+        None,
+        "migrated before the notice",
+    )
+    # No notice date: the warning that counts starts 90 days before the 2026-03-09 shutdown.
+    assert first_warning("gemini-3-pro-preview", REGISTRY, date(2026, 3, 1)) == (
+        date(2025, 12, 9),
+        "retiring soon (no notice date)",
+    )
+    assert first_warning("gemini-3-pro-preview", REGISTRY, date(2025, 6, 1)) == (
+        None,
+        "migrated before the warning window",
+    )
+    assert first_warning("gpt-4o", REGISTRY, date(2026, 5, 1)) == (None, "unknown model")
 
 
 def test_first_failure() -> None:
@@ -100,14 +106,16 @@ def test_replay_rows_and_summary(tmp_path: Path) -> None:
     assert a["failure_days_before_migration"] == 41
     assert by_sha["bbb"]["warning_days_before_migration"] == 60
     assert by_sha["ccc"]["detected_all"] is False
-    # No notice date: flagged, but no first warning day to count from.
+    # No notice date: the warning starts 90 days before the shutdown.
     assert by_sha["ddd"]["detected_all"] is True
-    assert by_sha["ddd"]["first_warning"] is None
+    assert by_sha["ddd"]["first_warning"] == "2025-12-09"
+    assert by_sha["ddd"]["warning_days_before_migration"] == 82
     result = summarise(rows)
     everything = result["settings"]["all"]
     assert everything["flagged"] == 3
-    assert everything["with_notice"] == 2
-    assert everything["warning_days_before_migration"]["median"] == pytest.approx(65.5)
+    assert everything["by_warning"] == {"notice": 2, "retiring soon (no notice date)": 1}
+    assert everything["warning_days_before_migration"]["median"] == 71
+    assert everything["warning_days_by_source"]["notice"]["median"] == pytest.approx(65.5)
     assert everything["migrated_after_shutdown"] == 1
     assert everything["failure_days_before_late_migration"]["median"] == 41
     assert result["settings"]["both"]["flagged"] == 2
@@ -134,6 +142,7 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--dir", str(out), "--timing", str(timing)]) == 0
     printed = capsys.readouterr().out
     assert "Commits replayed: 4" in printed
+    assert "retiring soon (no notice date)" in printed
     assert "--fail-within 30 would have failed CI a median of 41 days" in printed
     written = json.loads((out / "replay.json").read_text())
     assert written["settings"]["all"]["flagged"] == 4

@@ -262,3 +262,13 @@ def test_fetch_missing_skips_files_too_big_to_scan(tmp_path: Path) -> None:
     )
     assert fetch_missing(sites, {"a": "p"}, {"a": "o/r"}, tmp_path, big) == {"too big to scan": 1}
     assert not (tmp_path / "a").exists()
+
+
+def test_main_with_another_sheet(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    make_set(tmp_path)
+    (tmp_path / "sheet_labelled.csv").write_bytes((tmp_path / "sheet.csv").read_bytes())
+    assert main(["--dir", str(tmp_path), "--no-fetch", "--sheet", "sheet_labelled.csv"]) == 0
+    assert (tmp_path / "rescore.sheet_labelled.json").exists()
+    assert not (tmp_path / "rescore.json").exists()
+    assert main(["--dir", str(tmp_path), "--no-fetch", "--sheet", "missing.csv"]) == 1
+    assert "missing.csv" in capsys.readouterr().err

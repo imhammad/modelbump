@@ -68,6 +68,8 @@ It scans the saved snapshots with the current scanner, checks that it finds the 
 
 The rules of [ADR 0031](../adr/0031-describing-contexts-and-test-files.md) were written after reading these labels, so their gain on this sheet is in-sample.
 
+The sheet shows the first 300 characters of a line, so on very long lines (flow files, one-line JSON) the ID can be out of view. Those rows were re-checked from the text around the ID ([ADR 0034](../adr/0034-replay-warning-sources.md)). The first-pass labels are kept in `sheet_labelled.csv`; `--sheet sheet_labelled.csv` scores them.
+
 ## Replay: would the scanner have warned in time?
 
 Decision: [ADR 0033](../adr/0033-replaying-the-scanner.md).
@@ -76,6 +78,6 @@ Decision: [ADR 0033](../adr/0033-replaying-the-scanner.md).
 uv run python -m research.scanner_eval.replay
 ```
 
-For each of the 100 commits, it scans the snapshot from just before the migration. If the scanner reports the model the commit moved away from, the project counts as flagged, and the first warning comes on the provider's notice day. It prints, for each setting, how many projects were flagged, and the median days between the first warning and the migration. For flagged projects that migrated only after the shutdown, it also prints how many days earlier `--fail-within 30` would have failed CI. It writes `replay.jsonl` (one row per commit) and `replay.json`.
+For each of the 100 commits, it scans the snapshot from just before the migration. If the scanner reports the model the commit moved away from, the project counts as flagged. The first warning comes on the provider's notice day, or, for models without a notice date (Google), 90 days before the shutdown, when the scanner says `RETIRING_SOON` ([ADR 0034](../adr/0034-replay-warning-sources.md)). Projects that migrated before any warning are counted on their own. It prints, for each setting, how many projects were flagged, and the median days between the first warning and the migration. For flagged projects that migrated only after the shutdown, it also prints how many days earlier `--fail-within 30` would have failed CI. It writes `replay.jsonl` (one row per commit) and `replay.json`.
 
 The snapshot is the code at the migration, not on the notice day, so the warning lead is an upper bound.

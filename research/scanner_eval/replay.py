@@ -4,10 +4,12 @@ For each of the 100 migration commits of the scanner's evaluation set, the
 snapshot just before the migration is scanned with the current scanner. If it
 reports the model the commit moved away from, the project was flagged, and
 ``modelbump scan --today DAY`` would have warned from the provider's
-deprecation notice onwards (``assess`` returns UNKNOWN before it). This script
+deprecation notice onwards (``assess`` returns UNKNOWN before it); for models
+without a notice date, from RETIRING_SOON, 90 days before the shutdown. This script
 reports how often the project was flagged, and how many days the first
 warning, and a ``--fail-within 30`` CI failure, came before the developers
-actually migrated.
+actually migrated, with the flagged projects split by why a warning came or
+did not (ADR 0034).
 
 It reads the build's outputs and research/data/timing.jsonl (the commit day)
 and writes replay.jsonl and replay.json next to them. Nothing else changes.
@@ -19,36 +21,45 @@ Run from the repo root, after research.scanner_eval.rescore:
 import argparse
 import json
 import sys
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 from modelbump.registry import Registry, load_registry
-from modelbump.scanner.severity import Severity, assess
+from modelbump.scanner.severity import DEFAULT_SOON_DAYS
 from research.analysis.lag import median_ci, quantile
 from research.filtering.filter import read_jsonl, write_jsonl
 from research.scanner_eval.rescore import SETTINGS, TITLES, kept_by, rescan
 from research.validation.score import wilson
 
 FAIL_WITHIN = 30  # days, the --fail-within value a CI job would use
+WARNED = ("notice", "retiring soon (no notice date)")
 
 
-def first_warning(model_id: str, registry: Registry, start: date, end: date) -> date | None:
-    """The first day in [start, end] on which the scanner says more than UNKNOWN."""
-    if assess(model_id, registry, end).severity is Severity.UNKNOWN:
-        return None
-    low, high = start, end
-    if assess(model_id, registry, low).severity is not Severity.UNKNOWN:
-        return low
-    # UNKNOWN before the notice and known from it on: find the switch by halving.
-    while (high - low).days > 1:
-        middle = low + timedelta(days=(high - low).days // 2)
-        if assess(model_id, registry, middle).severity is Severity.UNKNOWN:
-            low = middle
-        else:
-            high = middle
-    return high
+def first_warning(
+    model_id: str, registry: Registry, committed: date, soon_days: int = DEFAULT_SOON_DAYS
+) -> tuple[date | None, str]:
+    """When the scanner first warned before ``committed``, and why (or why it did not).
+
+    With a notice date, the warning starts on that day (``assess`` is UNKNOWN
+    before it). Without one, as for some Google models, the scanner says
+    DEPRECATED on any day, which tells nobody when to act, so the warning that
+    counts is RETIRING_SOON, ``soon_days`` before the shutdown.
+    """
+    found = registry.get(model_id)
+    if found is None:
+        return None, "unknown model"
+    model = found[1]
+    if model.announced is not None:
+        if committed < model.announced:
+            return None, "migrated before the notice"
+        return model.announced, "notice"
+    soon = model.shutdown - timedelta(days=soon_days)
+    if committed < soon:
+        return None, "migrated before the warning window"
+    return soon, "retiring soon (no notice date)"
 
 
 def first_failure(model_id: str, registry: Registry, fail_within: int) -> date | None:
@@ -99,7 +110,7 @@ def replay_rows(
         if day is None or entry is None:
             continue
         provider, model = entry
-        warn = first_warning(model_id, registry, day - timedelta(days=3 * 365), day)
+        warn, source = first_warning(model_id, registry, day)
         fail = first_failure(model_id, registry, fail_within)
         rows.append(
             {
@@ -115,10 +126,9 @@ def replay_rows(
                     f"detected_{s}": detected(model_id, sha, by_sha.get(sha, []), registry, s)
                     for s in SETTINGS
                 },
-                "first_warning": warn.isoformat() if warn and model.announced else None,
-                "warning_days_before_migration": (day - warn).days
-                if warn and model.announced
-                else None,
+                "first_warning": warn.isoformat() if warn else None,
+                "warning": source,
+                "warning_days_before_migration": (day - warn).days if warn else None,
                 "failure_days_before_migration": (day - fail).days if fail else None,
             }
         )
@@ -153,10 +163,20 @@ def summarise(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "share": len(flagged) / len(rows) if rows else None,
             "low": low,
             "high": high,
-            "with_notice": sum(1 for r in flagged if r["first_warning"]),
+            "by_warning": dict(Counter(str(r["warning"]) for r in flagged)),
             "warning_days_before_migration": spread(
                 [int(r["warning_days_before_migration"]) for r in flagged if r["first_warning"]]
             ),
+            "warning_days_by_source": {
+                source: spread(
+                    [
+                        int(r["warning_days_before_migration"])
+                        for r in flagged
+                        if r["warning"] == source
+                    ]
+                )
+                for source in WARNED
+            },
             "migrated_after_shutdown": len(late),
             "failure_days_before_late_migration": spread(
                 [int(r["failure_days_before_migration"]) for r in late]
@@ -181,6 +201,17 @@ def summary(result: Mapping[str, Any]) -> str:
         flagged = f"{r['flagged']} ({r['low']:.0%} to {r['high']:.0%})"
         lines.append(f"{TITLES[s]:<30}{flagged:<26}{warn}")
     r = result["settings"]["all"]
+    lines.append("")
+    lines.append(f"Flagged projects by first warning ({TITLES['all']}):")
+    for source, count in sorted(r["by_warning"].items(), key=lambda item: -item[1]):
+        days = r["warning_days_by_source"].get(source)
+        extra = (
+            f"; median {days['median']:.0f} days before the migration "
+            f"(95% CI {days['low']} to {days['high']})"
+            if days and days["n"]
+            else ""
+        )
+        lines.append(f"  {source:<36}{count:>4}{extra}")
     f = r["failure_days_before_late_migration"]
     lines.append("")
     lines.append(

@@ -241,17 +241,18 @@ def rescore(
     *,
     per_group: int = PER_GROUP,
     seed: int = SHEET_SEED,
+    sheet: str = "sheet.csv",
 ) -> dict[str, Any]:
-    """Every number of the re-scoring."""
+    """Every number of the re-scoring, with the labels in ``out_dir / sheet``."""
     commits = list(read_jsonl(out_dir / "commits.jsonl"))
     old_findings = list(read_jsonl(out_dir / "findings.jsonl"))
     sites = list(read_jsonl(out_dir / "sites.jsonl"))
-    labels, _, unknown = read_labels(out_dir / "sheet.csv")
+    labels, _, unknown = read_labels(out_dir / sheet)
     if unknown:
         raise SheetMismatchError(
             f"rows with an answer that is not yes, no or unclear: {unknown[:20]}"
         )
-    labelled = sheet_findings(old_findings, out_dir / "sheet.csv", per_group, seed)
+    labelled = sheet_findings(old_findings, out_dir / sheet, per_group, seed)
     old_group = {
         key_of(f): name
         for f in old_findings
@@ -347,22 +348,28 @@ def main(argv: Sequence[str] | None = None, http: httpx.Client | None = None) ->
     parser.add_argument(
         "--no-fetch", action="store_true", help="Do not download the files of missed sites."
     )
+    parser.add_argument(
+        "--sheet",
+        default="sheet.csv",
+        help="Labelled sheet in --dir, e.g. sheet_labelled.csv for the first-pass labels.",
+    )
     args = parser.parse_args(argv)
-    needed = ("commits.jsonl", "findings.jsonl", "sites.jsonl", "sheet.csv")
+    needed = ("commits.jsonl", "findings.jsonl", "sites.jsonl", args.sheet)
     missing = [name for name in needed if not (args.dir / name).exists()]
     if missing:
         print(f"Missing in {args.dir}: {', '.join(missing)}. Run the build first.", file=sys.stderr)
         return 1
     client = None if args.no_fetch else (http or httpx.Client(timeout=30, follow_redirects=True))
     try:
-        result = rescore(args.dir, load_registry(), client)
+        result = rescore(args.dir, load_registry(), client, sheet=args.sheet)
     except SheetMismatchError as error:
         print(f"Cannot re-score: {error}", file=sys.stderr)
         return 1
     finally:
         if client is not None and http is None:
             client.close()
-    out = args.dir / "rescore.json"
+    stem = Path(args.sheet).stem
+    out = args.dir / ("rescore.json" if stem == "sheet" else f"rescore.{stem}.json")
     out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(summary(result))
     print(f"\nWritten: {out}")

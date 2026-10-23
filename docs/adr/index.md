@@ -39,3 +39,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0031](0031-describing-contexts-and-test-files.md) | Mark IDs that only describe a model, and let users skip test files | Accepted |
 | [0032](0032-rescoring-after-a-scanner-change.md) | Re-score the same labels after a scanner change | Accepted |
 | [0033](0033-replaying-the-scanner.md) | Replay the scanner on the snapshots before each migration | Accepted |
+| [0034](0034-replay-warning-sources.md) | Say why each flagged project was warned, and re-check labels the sheet cut off | Accepted |
