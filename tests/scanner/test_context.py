@@ -204,6 +204,13 @@ def test_typescript_places(code: str, expected: Place) -> None:
             '    "kernel.add(OpenAIChatCompletion(\\"gpt-4o\\", key))\\n",\n',
             Place(Context.TEXT),
         ),
+        (
+            "flow.json",
+            '"value": "llm = ChatAnthropic(model=\'claude-3-haiku-20240307\', temperature=0)"\n',
+            Place(Context.CONFIG, "value"),
+        ),
+        # Quotes in a sentence are still a sentence.
+        ("svc.py", "log.info(\"We use 'gpt-4o' here\")\n", Place(Context.PROSE)),
         # A plain ID string, or one with a provider prefix, is not prose.
         (
             "svc.py",

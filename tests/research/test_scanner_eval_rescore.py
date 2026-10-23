@@ -253,3 +253,12 @@ def test_main_reports_a_mismatch(tmp_path: Path, capsys: pytest.CaptureFixture[s
     (tmp_path / "snapshots" / "aaa" / "new.py").write_text('M = "gpt-4o"\n')
     assert main(["--dir", str(tmp_path), "--no-fetch"]) == 1
     assert "Cannot re-score" in capsys.readouterr().err
+
+
+def test_fetch_missing_skips_files_too_big_to_scan(tmp_path: Path) -> None:
+    sites = [{"sha": "a", "path": "x.html", "found": False, "reason": "file type not scanned"}]
+    big = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, content=b"x" * 1_000_001))
+    )
+    assert fetch_missing(sites, {"a": "p"}, {"a": "o/r"}, tmp_path, big) == {"too big to scan": 1}
+    assert not (tmp_path / "a").exists()

@@ -192,8 +192,11 @@ def fetch_missing(
             continue
         url = RAW_URL.format(repo=repos[sha], ref=parents[sha], path=path)
         response = http.get(url)
-        if response.status_code != 200 or len(response.content) > MAX_BYTES:
+        if response.status_code != 200:
             outcome[f"failed ({response.status_code})"] += 1
+            continue
+        if len(response.content) > MAX_BYTES:
+            outcome["too big to scan"] += 1  # the scanner skips files over 1 MB too
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(response.content)

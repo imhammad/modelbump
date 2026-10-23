@@ -67,3 +67,15 @@ uv run python -m research.scanner_eval.rescore
 It scans the saved snapshots with the current scanner, checks that it finds the IDs at the same places, and gives each labelled row its new context. It prints precision and recall for four settings (all findings, `--skip-comments`, `--skip-tests`, both) and the labelled rows whose context changed. For sites missed because their file type was not scanned, it downloads those files from `raw.githubusercontent.com` into `extra/` (`--no-fetch` skips this). It writes `rescore.json` and `rescore.findings.jsonl`, and changes none of the build's files.
 
 The rules of [ADR 0031](../adr/0031-describing-contexts-and-test-files.md) were written after reading these labels, so their gain on this sheet is in-sample.
+
+## Replay: would the scanner have warned in time?
+
+Decision: [ADR 0033](../adr/0033-replaying-the-scanner.md).
+
+```
+uv run python -m research.scanner_eval.replay
+```
+
+For each of the 100 commits, it scans the snapshot from just before the migration. If the scanner reports the model the commit moved away from, the project counts as flagged, and the first warning comes on the provider's notice day. It prints, for each setting, how many projects were flagged, and the median days between the first warning and the migration. For flagged projects that migrated only after the shutdown, it also prints how many days earlier `--fail-within 30` would have failed CI. It writes `replay.jsonl` (one row per commit) and `replay.json`.
+
+The snapshot is the code at the migration, not on the notice day, so the warning lead is an upper bound.

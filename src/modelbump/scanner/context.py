@@ -165,7 +165,11 @@ def _describe(
     if _TABLE_VALUE.match(line, end + 1):
         return Place(Context.TABLE)
     inner = line[start + 1 : end]
-    if any(c.isspace() for c in inner) and not _escaped_quotes_around(line, column - 1, length):
+    if (
+        any(c.isspace() for c in inner)
+        and not _escaped_quotes_around(line, column - 1, length)
+        and not _code_quotes_around(line, column - 1, length, line[start])
+    ):
         return Place(Context.PROSE)
     return place
 
@@ -183,6 +187,17 @@ def _string_around(line: str, start: int, end: int) -> tuple[int, int] | None:
         if match.start() > start:
             break
     return None
+
+
+def _code_quotes_around(line: str, start: int, length: int, outer: str) -> bool:
+    """True for ``"model='gpt-4o'"``: code with its own quotes, stored in a string."""
+    quote = line[start - 1] if start > 0 else ""
+    if quote not in {'"', "'", "`"} or quote == outer:
+        return False
+    if line[start + length : start + length + 1] != quote:
+        return False
+    before = line[: start - 1].rstrip()
+    return before.endswith(("=", "(", ",", ":", "[", "{"))
 
 
 def _escaped_quotes_around(line: str, start: int, length: int) -> bool:
