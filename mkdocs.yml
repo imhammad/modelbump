@@ -82,6 +82,7 @@ nav:
       - adr/0027-python-context-with-tree-sitter.md
       - adr/0028-typescript-and-javascript-context.md
       - adr/0029-scanner-evaluation-set.md
+      - adr/0030-scoring-the-scanner-evaluation.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

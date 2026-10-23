@@ -37,3 +37,21 @@ Rules for unclear rows:
 - If you cannot decide even after opening the link, write `unclear` and explain in `note`.
 
 Label in order, without opening `sheet_key.csv`. In Numbers, export the sheet back to CSV with the same name (File, Export To, CSV).
+
+## Scoring
+
+Decision: [ADR 0030](../adr/0030-scoring-the-scanner-evaluation.md).
+
+```
+uv run python -m research.scanner_eval.score
+```
+
+It checks that every row of `sheet.csv` is in `sheet_key.csv` and that every answer is `yes`, `no` or `unclear` (blank rows are counted and skipped, so it can run halfway). It prints, and writes to `scanner_eval.json`:
+
+- precision for each group, with a 95% Wilson interval; `unclear` rows are counted but left out of the share;
+- precision over all findings, weighted by the size of each group;
+- precision with `--skip-comments`, which is the same without the documentation group;
+- the share of `yes` for each context, unweighted;
+- recall on known sites, copied from `build.stats.json`.
+
+If a second person labels a copy of the blank sheet, add `--second path/to/their_sheet.csv` to get Cohen's kappa.
