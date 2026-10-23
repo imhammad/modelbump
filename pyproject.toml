@@ -1,7 +1,7 @@
 [project]
 name = "modelbump"
 version = "0.0.1"
-description = "Dependabot for LLM models: detect model retirements, test old vs new with statistical rigor, repair prompts, and open the upgrade PR."
+description = "Find the LLM model IDs in your code and config, and warn before providers retire them."
 readme = "README.md"
 authors = [
     { name = "Hammad Hassan" }
@@ -9,6 +9,18 @@ authors = [
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
+keywords = ["llm", "model deprecation", "model retirement", "static analysis", "github action", "openai", "anthropic", "gemini"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.13",
     "pyyaml>=6.0.3",
@@ -17,6 +29,13 @@ dependencies = [
     "tree-sitter-typescript>=0.23.2",
     "typer>=0.27.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/imhammad/modelbump"
+Documentation = "https://imhammad.github.io/modelbump/"
+Repository = "https://github.com/imhammad/modelbump"
+Issues = "https://github.com/imhammad/modelbump/issues"
+Changelog = "https://github.com/imhammad/modelbump/blob/main/CHANGELOG.md"
 
 [project.scripts]
 modelbump = "modelbump.cli:app"

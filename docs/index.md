@@ -1,9 +1,16 @@
 # ModelBump
 
-**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, tests the old model against its replacement with statistical rigor, repairs prompts that regress, and opens the upgrade pull request for you.
+**Dependabot for LLM models.** ModelBump finds the AI models your code depends on and warns you before a provider retires them. Later versions will also test the old model against its replacement, repair prompts that regress, and open the upgrade pull request for you.
 
-!!! warning "Early development"
-    ModelBump is in Phase 0 (foundations). Nothing here is ready for use yet.
+!!! note "v0.1.0: the scanner"
+    The first stage, **Scan**, is out as a command-line tool and a GitHub Action:
+
+    ```bash
+    pip install modelbump
+    modelbump scan .
+    ```
+
+    See [the scanner](architecture/scanner.md) for the options and the Action. The other stages are still being built.
 
 ## Where to look
 

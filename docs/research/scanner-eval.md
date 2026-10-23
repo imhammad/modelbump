@@ -81,3 +81,31 @@ uv run python -m research.scanner_eval.replay
 For each of the 100 commits, it scans the snapshot from just before the migration. If the scanner reports the model the commit moved away from, the project counts as flagged. The first warning comes on the provider's notice day, or, for models without a notice date (Google), 90 days before the shutdown, when the scanner says `RETIRING_SOON` ([ADR 0034](../adr/0034-replay-warning-sources.md)). Projects that migrated before any warning are counted on their own. It prints, for each setting, how many projects were flagged, and the median days between the first warning and the migration. For flagged projects that migrated only after the shutdown, it also prints how many days earlier `--fail-within 30` would have failed CI. It writes `replay.jsonl` (one row per commit) and `replay.json`.
 
 The snapshot is the code at the migration, not on the notice day, so the warning lead is an upper bound.
+
+## Results (2026-10-23, scanner of v0.1.0)
+
+250 labelled findings (50 per group) and 222 known sites, with the re-checked labels:
+
+| Setting | Findings | Precision | Recall on known sites |
+|---------|---------:|----------:|----------------------:|
+| All findings | 6,745 | 47.9% (95% CI 41.1-54.7) | 97.7% |
+| `--skip-comments` | 5,762 | 57.3% (95% CI 50.2-64.4) | 91.4% |
+| `--skip-tests` | 3,054 | 55.5% | 87.8% |
+| Both | 2,312 | 75.2% | 82.0% |
+
+- With the first-pass labels (`sheet_labelled.csv`), precision is 51.1% for all findings and 60.5% with `--skip-comments`; the other two settings do not change. Both versions are reported, because five labels changed after the labeller saw scanner output for them.
+- Recall in the old snapshots alone (before files were downloaded for missed file types) is 94.6% (210 of 222). Of the sites still missed, 5 are in files the build cached without scanning and 2 are in files too big to scan.
+- The rules of ADR 0031 were written after reading these labels, so the precision gain over the first scanner is in-sample.
+
+Replay on the 100 commits: the scanner flagged 96 projects (95% CI 90-98%), 95 with `--skip-tests` and 94 with both flags.
+
+| First warning (all findings) | Projects | Median days from warning to migration (95% CI) |
+|------------------------------|---------:|-----------------------------------------------:|
+| Retiring soon (no notice date) | 41 | 117 (71-187) |
+| Notice | 32 | 88 (49-140) |
+| Migrated before the notice | 19 | none |
+| Migrated before the warning window | 4 | none |
+
+- Over the 73 warned projects, the median warning came 99 days (95% CI 74-140) before the migration.
+- 44 flagged projects migrated only after the shutdown. For them, `--fail-within 30` would have failed CI a median of 121 days (95% CI 90-156) before they migrated.
+- The warning lead is an upper bound: the snapshot is the code at the migration, and the registry is today's.

@@ -1,14 +1,15 @@
 # ModelBump
 
-**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, tests the old model against its replacement with statistical rigor, repairs prompts that regress, and opens the upgrade pull request for you.
+**Dependabot for LLM models.** ModelBump finds the AI models your code depends on and warns you before a provider retires them. Later versions will also test the old model against its replacement, repair prompts that regress, and open the upgrade pull request for you.
 
+[![PyPI](https://img.shields.io/pypi/v/modelbump)](https://pypi.org/project/modelbump/)
 [![CI](https://github.com/imhammad/modelbump/actions/workflows/ci.yml/badge.svg)](https://github.com/imhammad/modelbump/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)](https://github.com/imhammad/modelbump/blob/main/LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/)
 
-> **Status:** early development (Phase 0: foundations). Not ready for use yet. Follow along in the [roadmap](#roadmap).
+> **Status:** `v0.1.0` ships the first stage, **Scan**, as a command-line tool and a GitHub Action. The other stages are still being built; see the [roadmap](#roadmap).
 
 ## The problem
 
@@ -16,23 +17,89 @@ Apps built on hosted LLMs (OpenAI, Anthropic, Google, ...) depend on specific mo
 
 A 2026 study of 22,555 migration commits across 17,703 open-source repositories found that:
 
-- **82%** of migrations happened *after* the old model was already shut down,
+- **82%** of migrations happened *after* the old model was already shut down (our own re-check on a larger dataset finds a smaller share, but still more than half),
 - model identifiers were **hard-coded in 94%** of migrating apps, and
 - only **4%** of migrations came with any evaluation suite.
 
 *Source: H. L. Kim, "When the Model Retires: An Empirical Study of LLM Migration in Open-Source Applications", arXiv:2609.31288, 2026.*
 
-## What ModelBump will do
+## Install and scan
 
-| Stage | What it does |
-|-------|--------------|
-| **Scan** | Static analysis finds every model ID in your code and config, checks it against a registry of provider retirement dates, and fails CI *before* the shutdown date. |
-| **Test** | Builds an app-specific regression suite from your prompts, tests, and (optionally) logs. |
-| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. |
-| **Repair** | Searches for prompt edits that fix regressions without breaking anything that already worked. |
-| **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. |
+Requires Python 3.12 or newer.
 
-## Quickstart (development)
+```bash
+pip install modelbump
+modelbump scan .
+```
+
+Or run it once without installing, with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uvx modelbump scan .
+```
+
+Each line of the report gives the file, line and column, the model ID, its status (`OK`, `RETIRING_SOON`, `DEPRECATED`, `RETIRED` or `UNKNOWN`), the shutdown date with the suggested replacement, and where the ID sits (a call argument, an assignment, a config value, a comment, ...).
+
+Useful options:
+
+| Option | What it does |
+|--------|--------------|
+| `--fail-within 30` | Exit with code 1 if a model is retired or shuts down within 30 days (for CI) |
+| `--skip-comments` | Leave out IDs that only describe a model: comments, docstrings, sentences, price tables |
+| `--skip-tests` | Leave out test files and test folders |
+| `--exclude PATTERN` | Skip matching paths, e.g. `--exclude '*.ipynb'` (repeat for more) |
+| `--format json` / `--format sarif` | Machine-readable reports; SARIF shows up in GitHub code scanning |
+
+Run `modelbump scan --help` for the rest.
+
+## GitHub Action
+
+```yaml
+name: ModelBump
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"  # every Monday, to catch new retirement notices
+
+permissions:
+  contents: read
+  security-events: write  # to upload findings to code scanning
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: imhammad/modelbump@v0.1.0
+        with:
+          fail-within: "30"
+          skip-comments: "true"
+```
+
+All inputs are listed in the [scanner documentation](https://imhammad.github.io/modelbump/architecture/scanner/).
+
+## How well the scanner works
+
+We ran the scanner on 100 real projects, each at the commit just before it moved off a retired model, and labelled a sample of 250 findings by hand ([evaluation details](https://imhammad.github.io/modelbump/research/scanner-eval/)):
+
+| Setting | Finds the old model's lines (recall) | Findings that are real dependencies (precision) |
+|---------|------|------|
+| Default | 97.7% | 47.9% |
+| `--skip-comments --skip-tests` | 82.0% | 75.2% |
+
+Replayed on those 100 projects, the scanner flagged 96 before they migrated. The default is tuned not to miss anything; the two flags trade some misses for a much quieter report.
+
+## The plan
+
+| Stage | What it does | Status |
+|-------|--------------|--------|
+| **Scan** | Static analysis finds every model ID in your code and config, checks it against a registry of provider retirement dates, and fails CI *before* the shutdown date. | Available (`v0.1.0`) |
+| **Test** | Builds an app-specific regression suite from your prompts, tests, and (optionally) logs. | Planned |
+| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Planned |
+| **Repair** | Searches for prompt edits that fix regressions without breaking anything that already worked. | Planned |
+| **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. | Planned |
+
+## Development
 
 Requires [uv](https://docs.astral.sh/uv/).
 
@@ -47,8 +114,8 @@ uv run pytest
 ## Roadmap
 
 - [x] **Phase 0:** Foundations: packaging, CI, pre-commit, branch protection
-- [ ] **Phase 1:** Migration dataset + model retirement registry
-- [ ] **Phase 2:** Scanner + GitHub Action (`v0.1.0`)
+- [x] **Phase 1:** Migration dataset + model retirement registry
+- [x] **Phase 2:** Scanner + GitHub Action (`v0.1.0`)
 - [ ] **Phase 3:** Model runner with caching and cost budgets
 - [ ] **Phase 4:** Statistical comparison engine
 - [ ] **Phase 5:** Regression suite synthesis + LLM-judge calibration
@@ -57,8 +124,8 @@ uv run pytest
 
 ## Research
 
-ModelBump is also a research project. The goal is a peer-reviewed paper evaluating each stage on real migration history and real open-source applications. Research notes will live in `docs/research/`.
+ModelBump is also a research project: an empirical study of how open-source LLM apps migrate off retired models (paper in preparation), and later a paper on the tool itself. Research notes, protocols and results are in the [research section of the docs](https://imhammad.github.io/modelbump/research/).
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](https://github.com/imhammad/modelbump/blob/main/LICENSE)
