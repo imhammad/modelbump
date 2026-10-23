@@ -55,3 +55,15 @@ It checks that every row of `sheet.csv` is in `sheet_key.csv` and that every ans
 - recall on known sites, copied from `build.stats.json`.
 
 If a second person labels a copy of the blank sheet, add `--second path/to/their_sheet.csv` to get Cohen's kappa.
+
+## Re-scoring after a scanner change
+
+Decision: [ADR 0032](../adr/0032-rescoring-after-a-scanner-change.md). Do not run the build again after the scanner changes: it would draw a new sheet. Instead:
+
+```
+uv run python -m research.scanner_eval.rescore
+```
+
+It scans the saved snapshots with the current scanner, checks that it finds the IDs at the same places, and gives each labelled row its new context. It prints precision and recall for four settings (all findings, `--skip-comments`, `--skip-tests`, both) and the labelled rows whose context changed. For sites missed because their file type was not scanned, it downloads those files from `raw.githubusercontent.com` into `extra/` (`--no-fetch` skips this). It writes `rescore.json` and `rescore.findings.jsonl`, and changes none of the build's files.
+
+The rules of [ADR 0031](../adr/0031-describing-contexts-and-test-files.md) were written after reading these labels, so their gain on this sheet is in-sample.
