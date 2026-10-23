@@ -34,6 +34,7 @@ jobs:
           exclude: |
             skipped
           skip-comments: "true"
+          skip-tests: "true"
           upload-sarif: "false"
       - name: Check the SARIF report
         env:

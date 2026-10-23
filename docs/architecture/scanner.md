@@ -45,8 +45,10 @@ Each finding says where the ID sits, so a real use stands out from a mention:
 | `comment` | `# was gpt-4o` | `[in a comment]` |
 | `config` | `summary_model: ...` in YAML | `[value of summary_model]` |
 | `text` | files without a parser yet (notebooks, Go, Java, ...) | nothing |
+| `prose` | `"Model to use (default: ...)"`, help and log text | `[in a sentence]` |
+| `table` | `"...": (2.50, 10.00)`, `'...': 200000` (prices, token limits) | `[key of a price or limit table]` |
 
-Python, TypeScript and JavaScript are parsed with tree-sitter, so files with syntax errors or Python 2 code still get context. In TS/JS, a value in an options object passed to a call counts as a call argument, and fallbacks such as `process.env.MODEL ?? "..."` count as the assignment they feed. `--skip-comments` leaves out comments and docstrings. JSON reports carry `context` and `detail`, and SARIF results carry them in `properties`.
+Python, TypeScript and JavaScript are parsed with tree-sitter, so files with syntax errors or Python 2 code still get context. In TS/JS, a value in an options object passed to a call counts as a call argument, and fallbacks such as `process.env.MODEL ?? "..."` count as the assignment they feed. Three line rules then mark IDs that only describe a model ([ADR 0031](../adr/0031-describing-contexts-and-test-files.md)): a whole-line comment in a file without a parser (`//` in Go, `#` in YAML or `.env`) is a `comment`; an ID inside a one-line string with spaces is `prose`, unless the string holds code (`\"gpt-4o\"` in a notebook or a saved flow); and a string key followed by a number is a `table`. `--skip-comments` leaves out `comment`, `docstring`, `prose` and `table`. `--skip-tests` leaves out test files and test folders (`tests/`, `__tests__/`, `test_*.py`, `*_test.go`, `*.test.ts`, `*Test.php`, ...). JSON reports carry `context` and `detail`, and SARIF results carry them in `properties`.
 
 ## Severity
 
@@ -117,14 +119,15 @@ jobs:
 | `fail-within` | empty | Fail the job if a model is retired or shuts down within this many days; empty never fails |
 | `soon-days` | `90` | Warning window for `RETIRING_SOON` |
 | `exclude` | empty | Paths to skip, one pattern per line |
-| `skip-comments` | `false` | Leave out IDs in comments and docstrings |
+| `skip-comments` | `false` | Leave out IDs that only describe a model (comments, docstrings, sentences, price tables) |
+| `skip-tests` | `false` | Leave out test files and test folders |
 | `upload-sarif` | `true` | Upload the findings to code scanning (needs `security-events: write`; private repositories also need GitHub Advanced Security) |
 
 The findings appear in the Security tab and on pull request lines, and the text report appears in the job summary.
 
 ## Files scanned
 
-Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned. `--exclude PATTERN` (repeatable) skips more: `tests` drops that folder, `*.ipynb` drops every notebook, and `*/fixtures` drops fixtures folders at any depth.
+Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, `.ex`, `.exs`, `.html`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, `env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned. `--exclude PATTERN` (repeatable) skips more: `tests` drops that folder, `*.ipynb` drops every notebook, and `*/fixtures` drops fixtures folders at any depth.
 
 ## Not yet
 

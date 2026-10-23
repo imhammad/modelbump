@@ -18,6 +18,9 @@ done <<< "${MB_EXCLUDE:-}"
 if [ "${MB_SKIP_COMMENTS:-false}" = "true" ]; then
   args+=(--skip-comments)
 fi
+if [ "${MB_SKIP_TESTS:-false}" = "true" ]; then
+  args+=(--skip-tests)
+fi
 
 # Build and run ModelBump from the action's own copy of this repository.
 modelbump=(uv tool run --quiet --from "$GITHUB_ACTION_PATH" modelbump)

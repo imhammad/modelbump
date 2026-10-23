@@ -2,6 +2,7 @@
 
 import fnmatch
 import os
+import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
@@ -56,6 +57,11 @@ SCAN_SUFFIXES = frozenset(
         ".php",
         ".swift",
         ".sh",
+        ".ex",
+        ".exs",
+        # Web pages often set a model in an inline script.
+        ".html",
+        ".htm",
         # Configuration
         ".json",
         ".jsonc",
@@ -74,6 +80,17 @@ SKIP_NAMES = frozenset(
     {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "poetry.lock", "Cargo.lock"}
 )
 
+# Example env files without a leading dot (same names as in scanner.context).
+ENV_EXAMPLE_NAMES = frozenset({"env.example", "env.sample", "env.template", "example.env"})
+
+# Test folders and test file names in the common languages (ADR 0031).
+_TEST_PATH = re.compile(
+    r"(^|/)(tests?|__tests__|__mocks__|specs?|testdata|fixtures|e2e)/"
+    r"|(^|/)(test_[^/]*\.py|[^/]*_test\.(py|go|rb|exs?)|conftest\.py)$"
+    r"|(^|/)[^/]+\.(test|spec)\.[a-z]+$"
+    r"|(^|/)[^/]*Tests?\.(java|kt|cs|swift|php)$"
+)
+
 MAX_BYTES = 1_000_000
 _BINARY_PROBE = 8192
 
@@ -84,9 +101,14 @@ def is_scannable(path: Path) -> bool:
     if name in SKIP_NAMES:
         return False
     # .env, .env.example, .env.local, ...
-    if name == ".env" or name.startswith(".env."):
+    if name == ".env" or name.startswith(".env.") or name in ENV_EXAMPLE_NAMES:
         return True
     return path.suffix.lower() in SCAN_SUFFIXES
+
+
+def is_test_path(rel_path: str) -> bool:
+    """Return True if a ``/``-separated path is a test file or sits in a test folder."""
+    return _TEST_PATH.search(rel_path) is not None
 
 
 def is_excluded(rel_path: str, exclude: Sequence[str]) -> bool:

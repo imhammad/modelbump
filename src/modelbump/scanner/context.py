@@ -5,6 +5,10 @@ tree-sitter, which also builds a tree for files that do not parse cleanly
 (Python 2, half-edited code), so a syntax error never hides a finding. Config
 files get the key the ID is the value of. Other files keep the plain-text
 finding without context.
+
+Three line rules then mark IDs that only describe a model (ADR 0031): comment
+lines in files that are not parsed, price and limit tables, and IDs inside a
+sentence.
 """
 
 import re
@@ -25,6 +29,34 @@ TSX_SUFFIXES = frozenset({".tsx", ".js", ".jsx", ".mjs", ".cjs"})
 CONFIG_SUFFIXES = frozenset(
     {".json", ".jsonc", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env"}
 )
+# Example env files without a leading dot.
+CONFIG_NAMES = frozenset({"env.example", "env.sample", "env.template", "example.env"})
+# How a comment line starts, for files that are not parsed. JSON has no comments.
+_HASH = ("#",)
+_C_LIKE = ("//", "/*", "* ", "*/")
+COMMENT_PREFIXES: dict[str, tuple[str, ...]] = {
+    ".go": _C_LIKE,
+    ".java": _C_LIKE,
+    ".kt": _C_LIKE,
+    ".rs": _C_LIKE,
+    ".cs": _C_LIKE,
+    ".swift": _C_LIKE,
+    ".php": (*_C_LIKE, "#"),
+    ".rb": _HASH,
+    ".sh": _HASH,
+    ".ex": _HASH,
+    ".exs": _HASH,
+    ".html": ("<!--",),
+    ".htm": ("<!--",),
+    ".jsonc": ("//", "/*"),
+    ".yaml": _HASH,
+    ".yml": _HASH,
+    ".toml": _HASH,
+    ".ini": ("#", ";"),
+    ".cfg": ("#", ";"),
+    ".conf": ("#", ";"),
+    ".env": _HASH,
+}
 _MAX_DETAIL = 60
 _CONFIG_KEY = re.compile(r"""^\s*(?:export\s+)?["']?([A-Za-z0-9_.-]+)["']?\s*[:=]""")
 _PYTHON = Language(tree_sitter_python.language())
@@ -48,10 +80,14 @@ class Context(StrEnum):
     """A value in a config file (JSON, YAML, TOML, INI, .env)."""
     TEXT = "text"
     """A file the scanner does not parse (yet)."""
+    PROSE = "prose"
+    """Inside a sentence, such as help text: ``"Model to use (default: gpt-4o)"``."""
+    TABLE = "table"
+    """The key of a price or limit table: ``"gpt-4o": (2.50, 10.00)``."""
 
 
-# Contexts that describe the code rather than use the model.
-DOCUMENTATION = frozenset({Context.COMMENT, Context.DOCSTRING})
+# Contexts that describe a model rather than use it; --skip-comments leaves them out.
+DOCUMENTATION = frozenset({Context.COMMENT, Context.DOCSTRING, Context.PROSE, Context.TABLE})
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,9 +108,22 @@ def file_kind(path: str) -> str:
         return "typescript"
     if suffix in TSX_SUFFIXES:
         return "tsx"
-    if suffix in CONFIG_SUFFIXES or name == ".env" or name.startswith(".env."):
+    if (
+        suffix in CONFIG_SUFFIXES
+        or name in CONFIG_NAMES
+        or name == ".env"
+        or name.startswith(".env.")
+    ):
         return "config"
     return "text"
+
+
+def comment_prefixes(path: str) -> tuple[str, ...]:
+    """How a whole-line comment starts in a file that is not parsed; empty if unknown."""
+    name = PurePosixPath(path).name
+    if name in CONFIG_NAMES or name == ".env" or name.startswith(".env."):
+        return _HASH
+    return COMMENT_PREFIXES.get(PurePosixPath(path).suffix.lower(), ())
 
 
 def places(path: str, text: str, spots: Sequence[tuple[int, int, int]]) -> list[Place]:
@@ -83,16 +132,64 @@ def places(path: str, text: str, spots: Sequence[tuple[int, int, int]]) -> list[
     Lines and columns start at 1 and count characters, as the finder reports them.
     """
     kind = file_kind(path)
+    lines = text.splitlines()
     if kind == "python":
-        return _tree_places(_PYTHON, _classify, text, spots)
-    if kind == "typescript":
-        return _tree_places(_TYPESCRIPT, _classify_js, text, spots)
-    if kind == "tsx":
-        return _tree_places(_TSX, _classify_js, text, spots)
-    if kind == "config":
-        lines = text.splitlines()
-        return [_config_place(lines[line - 1], column) for line, column, _ in spots]
-    return [Place(Context.TEXT) for _ in spots]
+        found = _tree_places(_PYTHON, _classify, text, spots)
+    elif kind == "typescript":
+        found = _tree_places(_TYPESCRIPT, _classify_js, text, spots)
+    elif kind == "tsx":
+        found = _tree_places(_TSX, _classify_js, text, spots)
+    elif kind == "config":
+        found = [_config_place(lines[line - 1], column) for line, column, _ in spots]
+    else:
+        found = [Place(Context.TEXT) for _ in spots]
+    prefixes = comment_prefixes(path) if kind in {"config", "text"} else ()
+    return [
+        _describe(place, lines[line - 1], column, length, prefixes)
+        for place, (line, column, length) in zip(found, spots, strict=True)
+    ]
+
+
+def _describe(
+    place: Place, line: str, column: int, length: int, prefixes: tuple[str, ...]
+) -> Place:
+    """Apply the line rules of ADR 0031 to a finding that is not documentation yet."""
+    if place.context in DOCUMENTATION:
+        return place
+    if prefixes and line.lstrip().startswith(prefixes):
+        return Place(Context.COMMENT)
+    span = _string_around(line, column - 1, column - 1 + length)
+    if span is None:
+        return place
+    start, end = span
+    if _TABLE_VALUE.match(line, end + 1):
+        return Place(Context.TABLE)
+    inner = line[start + 1 : end]
+    if any(c.isspace() for c in inner) and not _escaped_quotes_around(line, column - 1, length):
+        return Place(Context.PROSE)
+    return place
+
+
+# After a table key: a number, a tuple of numbers, or an object whose first value is one.
+_TABLE_VALUE = re.compile(r"""\s*(?::|=>)\s*(?:[(\[]\s*|\{\s*["']?\w+["']?\s*:\s*)?[-+]?\.?\d""")
+_STRING = re.compile(r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`""")
+
+
+def _string_around(line: str, start: int, end: int) -> tuple[int, int] | None:
+    """The quotes (start, end index) of the one-line string holding [start, end), if any."""
+    for match in _STRING.finditer(line):
+        if match.start() < start and end < match.end():
+            return match.start(), match.end() - 1
+        if match.start() > start:
+            break
+    return None
+
+
+def _escaped_quotes_around(line: str, start: int, length: int) -> bool:
+    """True for ``\\"gpt-4o\\"``: a string in code that is itself stored in a string."""
+    before = line[max(0, start - 2) : start]
+    after = line[start + length : start + length + 2]
+    return before in {'\\"', "\\'"} and after == before
 
 
 def _config_place(line: str, column: int) -> Place:

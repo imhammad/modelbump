@@ -200,3 +200,27 @@ def test_scan_skip_comments(tmp_path: Path) -> None:
         "app.py:3:22  gpt-4o  UNKNOWN  no retirement announced  [in client.create(model=)]",
         "Found 1 model ID in 1 file (scanned 1 file): 1 UNKNOWN.",
     ]
+
+
+def test_scan_skip_comments_also_skips_sentences_and_tables(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        'PRICES = {"gpt-4o": 2.5}\nprint("Using gpt-4o today")\nMODEL = "gpt-4o"\n'
+    )
+    every = runner.invoke(app, ["scan", str(tmp_path)])
+    assert "[key of a price or limit table]" in every.stdout
+    assert "[in a sentence]" in every.stdout
+    skipped = runner.invoke(app, ["scan", str(tmp_path), "--skip-comments"])
+    assert "Found 1 model ID" in skipped.stdout
+    assert "[assigned to MODEL]" in skipped.stdout
+
+
+def test_scan_skip_tests(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text('MODEL = "gpt-4o"\n')
+    (tmp_path / "app.test.ts").write_text('const m = "gpt-4o";\n')
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    every = runner.invoke(app, ["scan", str(tmp_path)])
+    assert "Found 3 model IDs" in every.stdout
+    skipped = runner.invoke(app, ["scan", str(tmp_path), "--skip-tests"])
+    assert "Found 1 model ID in 1 file" in skipped.stdout
+    assert "app.py:1:" in skipped.stdout

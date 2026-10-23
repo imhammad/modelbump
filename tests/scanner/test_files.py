@@ -5,12 +5,25 @@ from pathlib import Path
 import pytest
 
 from modelbump.scanner import iter_source_files, read_source
-from modelbump.scanner.files import MAX_BYTES, is_scannable
+from modelbump.scanner.files import MAX_BYTES, is_scannable, is_test_path
 
 
 @pytest.mark.parametrize(
     "name",
-    ["app.py", "index.ts", "App.tsx", "config.yaml", "settings.toml", ".env", ".env.example"],
+    [
+        "app.py",
+        "index.ts",
+        "App.tsx",
+        "config.yaml",
+        "settings.toml",
+        ".env",
+        ".env.example",
+        "env.example",
+        "config.exs",
+        "config.ex",
+        "index.html",
+        "page.htm",
+    ],
 )
 def test_code_and_config_are_scanned(name: str) -> None:
     assert is_scannable(Path(name))
@@ -76,3 +89,27 @@ def test_walk_skips_excluded_paths(
         path.write_text("x = 1\n")
     found = [p.relative_to(tmp_path).as_posix() for p in iter_source_files(tmp_path, patterns)]
     assert found == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("tests/test_app.py", True),
+        ("src/pkg/tests/data/flow.json", True),
+        ("test/model-selection.test.mjs", True),
+        ("src/components/__tests__/Model.tsx", True),
+        ("test_api.py", True),
+        ("conftest.py", True),
+        ("internal/llm/reasoning_test.go", True),
+        ("src/App.spec.ts", True),
+        ("Tests/Unit/Service/OpenAiAgentTest.php", True),
+        ("spec/models_spec.rb", True),
+        ("app/llm.py", False),
+        ("src/testing_utils.py", False),
+        ("contest/app.py", False),
+        ("src/latest/models.ts", False),
+        ("docs/attestation.md", False),
+    ],
+)
+def test_is_test_path(path: str, expected: bool) -> None:
+    assert is_test_path(path) is expected

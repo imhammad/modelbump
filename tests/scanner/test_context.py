@@ -93,6 +93,9 @@ def test_config_and_text_places(path: str, text: str, expected: Place) -> None:
         ("a.cjs", "tsx"),
         ("a.go", "text"),
         ("a.ipynb", "text"),
+        ("env.example", "config"),
+        ("config.exs", "text"),
+        ("index.html", "text"),
     ],
 )
 def test_file_kind(path: str, kind: str) -> None:
@@ -149,3 +152,73 @@ def test_javascript_places(code: str, expected: Place) -> None:
 def test_typescript_places(code: str, expected: Place) -> None:
     found = place_of("app.ts", code + "\n")
     assert found[0] == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "text", "expected"),
+    [
+        # Whole-line comments in files without a parser.
+        ("main.go", "// Some models (gpt-4o) do not stream.\n", Place(Context.COMMENT)),
+        ("Provider.swift", '/// let ai = Provider(model: "gpt-4o")\n', Place(Context.COMMENT)),
+        ("Agent.php", "  # uses gpt-4o\n", Place(Context.COMMENT)),
+        ("helper.go", " * Defaults to gpt-4o.\n", Place(Context.COMMENT)),
+        (".env.example", "# PLUGIN_MODELS=gpt-4o\n", Place(Context.COMMENT)),
+        ("env.example", "# MODEL=gpt-4o\n", Place(Context.COMMENT)),
+        ("config.yaml", "# model: gpt-4o\n", Place(Context.COMMENT)),
+        ("config.exs", '# config :app, model: "gpt-4o"\n', Place(Context.COMMENT)),
+        ("index.html", "<!-- gpt-4o -->\n", Place(Context.COMMENT)),
+        # A comment after code does not make the line a comment.
+        ("main.go", 'model := "gpt-4o" // cheap\n', Place(Context.TEXT)),
+        ("run.sh", 'python app.py --model "gpt-4o"\n', Place(Context.TEXT)),
+        # JSON has no comments, and notebooks are JSON.
+        ("flow.json", '// "gpt-4o"\n', Place(Context.CONFIG)),
+        ("nb.ipynb", '"# gpt-4o"\n', Place(Context.PROSE)),
+        # Price and limit tables.
+        ("pricing.py", 'PRICES = {\n    "gpt-4o": (2.50, 10.00),\n}\n', Place(Context.TABLE)),
+        ("tokens.js", "const t = {\n  'gpt-4o': 128000,\n};\n", Place(Context.TABLE)),
+        (
+            "tx.js",
+            "const t = {\n  'gpt-4o': { prompt: 1.1, completion: 4.4 },\n};\n",
+            Place(Context.TABLE),
+        ),
+        ("prices.json", '{"gpt-4o": 0.5}\n', Place(Context.TABLE)),
+        ("rates.php", "$r = ['gpt-4o' => 2.5];\n", Place(Context.TABLE)),
+        # A display name or a mapping to another ID is not a table.
+        ("names.py", 'NAMES = {\n    "gpt-4o": "GPT-4o",\n}\n', Place(Context.STRING)),
+        ("cfg.json", '{"model": "gpt-4o", "max_tokens": 100}\n', Place(Context.CONFIG)),
+        # IDs inside sentences.
+        (
+            "svc.py",
+            'log.info("Model to use (default: gpt-4o)")\n',
+            Place(Context.PROSE),
+        ),
+        (
+            "manifest.json",
+            '{"help": "Native image model. gemini-2.5-pro = best"}\n',
+            Place(Context.PROSE),
+        ),
+        ("main.go", 'fmt.Println("calling gpt-4o now")\n', Place(Context.PROSE)),
+        # Code stored in a string keeps its place: notebooks and saved flows.
+        (
+            "nb.ipynb",
+            '    "kernel.add(OpenAIChatCompletion(\\"gpt-4o\\", key))\\n",\n',
+            Place(Context.TEXT),
+        ),
+        # A plain ID string, or one with a provider prefix, is not prose.
+        (
+            "svc.py",
+            'client.create(model="openai/gpt-4o")\n',
+            Place(Context.CALL_ARGUMENT, "client.create(model=)"),
+        ),
+    ],
+)
+def test_describing_rules(path: str, text: str, expected: Place) -> None:
+    assert place_of(path, text) == [expected]
+
+
+def test_comments_and_docstrings_are_not_changed_by_the_rules() -> None:
+    assert place_of("a.py", "# price: 'gpt-4o': 2.5\n") == [Place(Context.COMMENT)]
+
+
+def test_an_unclosed_quote_is_not_a_string() -> None:
+    assert place_of("main.go", 'x := "gpt-4o\n') == [Place(Context.TEXT)]

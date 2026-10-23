@@ -162,6 +162,10 @@ def where(finding: Finding) -> str | None:
         return "in a comment"
     if context is Context.DOCSTRING:
         return "in a docstring"
+    if context is Context.PROSE:
+        return "in a sentence"
+    if context is Context.TABLE:
+        return "key of a price or limit table"
     if detail is None:
         return None
     if context is Context.CALL_ARGUMENT:

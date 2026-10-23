@@ -6,7 +6,7 @@ from pathlib import Path
 
 from modelbump.registry import Registry
 from modelbump.scanner.context import DOCUMENTATION, Context, places
-from modelbump.scanner.files import iter_source_files, read_source
+from modelbump.scanner.files import is_test_path, iter_source_files, read_source
 from modelbump.scanner.ids import ModelIdFinder
 from modelbump.scanner.resolve import resolve
 
@@ -44,13 +44,15 @@ def scan_path(
     registry: Registry,
     exclude: Sequence[str] = (),
     skip_comments: bool = False,
+    skip_tests: bool = False,
 ) -> ScanResult:
     """Scan ``root`` (a folder or a single file) for model IDs.
 
     A file given directly is scanned whatever its name; a folder is walked
     with the rules in :mod:`modelbump.scanner.files`, skipping paths that match
-    an ``exclude`` pattern. ``skip_comments`` leaves out IDs in comments and
-    docstrings.
+    an ``exclude`` pattern. ``skip_comments`` leaves out IDs that only describe
+    a model (comments, docstrings, sentences and price tables), and
+    ``skip_tests`` leaves out test files and test folders.
     """
     finder = ModelIdFinder(model_id for _, model in registry for model_id in model.all_ids())
     if root.is_file():
@@ -59,6 +61,8 @@ def scan_path(
     else:
         paths = list(iter_source_files(root, exclude))
         base = root
+    if skip_tests:
+        paths = [p for p in paths if not is_test_path(p.relative_to(base).as_posix())]
     findings: list[Finding] = []
     scanned = skipped = 0
     for path in paths:

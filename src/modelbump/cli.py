@@ -84,7 +84,14 @@ def scan(
     ] = None,
     skip_comments: Annotated[
         bool,
-        typer.Option(help="Leave out IDs found in comments and docstrings."),
+        typer.Option(
+            help="Leave out IDs that only describe a model: comments, docstrings, "
+            "sentences and price tables.",
+        ),
+    ] = False,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(help="Leave out test files and test folders."),
     ] = False,
     output: Annotated[
         Path | None,
@@ -94,7 +101,7 @@ def scan(
     """Find the LLM model IDs in a repository's code and config, and how urgent each is."""
     registry = load_registry()
     day = today.date() if today is not None else date.today()
-    result = scan_path(path, registry, exclude or (), skip_comments)
+    result = scan_path(path, registry, exclude or (), skip_comments, skip_tests)
     report = build_report(result, registry, day, soon_days, fail_within, _root_uri(path))
     rendered = RENDERERS[output_format](report)
     if output is None:
