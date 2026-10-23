@@ -1,6 +1,6 @@
 [project]
 name = "modelbump"
-version = "0.0.1"
+version = "0.1.0"
 description = "Dependabot for LLM models: detect model retirements, test old vs new with statistical rigor, repair prompts, and open the upgrade PR."
 readme = "README.md"
 authors = [
