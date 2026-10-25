@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: imhammad/modelbump@main  # use a release tag once v0.1.0 is out
+      - uses: imhammad/modelbump@v0.1.0
         with:
           fail-within: "30"
           exclude: |
