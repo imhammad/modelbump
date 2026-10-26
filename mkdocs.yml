@@ -51,6 +51,7 @@ nav:
       - architecture/index.md
       - architecture/registry.md
       - architecture/scanner.md
+      - architecture/runner.md
   - Decisions (ADRs):
       - adr/index.md
       - adr/0001-python-uv-src-layout.md
@@ -88,6 +89,7 @@ nav:
       - adr/0033-replaying-the-scanner.md
       - adr/0034-replay-warning-sources.md
       - adr/0035-publishing-releases-to-pypi.md
+      - adr/0036-runner-speaks-openai-compatible-http.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

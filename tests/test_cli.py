@@ -224,3 +224,34 @@ def test_scan_skip_tests(tmp_path: Path) -> None:
     skipped = runner.invoke(app, ["scan", str(tmp_path), "--skip-tests"])
     assert "Found 1 model ID in 1 file" in skipped.stdout
     assert "app.py:1:" in skipped.stdout
+
+
+def test_ask_prints_the_answer_and_a_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import ChatResult, Runner
+
+    async def fake_run(self: Runner, request: object) -> ChatResult:
+        return ChatResult("Hi there.", "ollama/qwen2.5:7b", 12, 3, "stop", 1, 0.5)
+
+    monkeypatch.setattr(Runner, "run", fake_run)
+    result = runner.invoke(app, ["ask", "Say hi"])
+    assert result.exit_code == 0
+    assert result.stdout == "Hi there.\n"
+    assert "12 tokens in, 3 out, 1 attempt, 0.5s, finish: stop" in result.stderr
+
+
+def test_ask_explains_when_ollama_is_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import Runner, RunnerError
+
+    async def fake_run(self: Runner, request: object) -> object:
+        raise RunnerError("ollama/qwen2.5:7b: could not reach http://localhost:11434/v1")
+
+    monkeypatch.setattr(Runner, "run", fake_run)
+    result = runner.invoke(app, ["ask", "Say hi"])
+    assert result.exit_code == 1
+    assert "open -a Ollama" in result.stderr
+
+
+def test_ask_rejects_a_model_without_an_endpoint() -> None:
+    result = runner.invoke(app, ["ask", "Say hi", "--model", "qwen2.5:7b"])
+    assert result.exit_code == 1
+    assert "endpoint/model" in result.stderr

@@ -1,5 +1,6 @@
 """Command-line interface for ModelBump."""
 
+import asyncio
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -8,6 +9,7 @@ import typer
 
 from modelbump import __version__
 from modelbump.registry import Status, load_registry
+from modelbump.runner import ChatRequest, Runner, RunnerError
 from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
 from modelbump.scanner.report import (
     RENDERERS,
@@ -152,3 +154,42 @@ def check(
         typer.echo(f"Rescheduled: {len(model.superseded)} earlier plan(s) were replaced.")
     if model.replacement:
         typer.echo(f"Suggested replacement: {model.replacement}")
+
+
+@app.command()
+def ask(
+    prompt: Annotated[str, typer.Argument(help="What to ask the model.")],
+    model: Annotated[
+        str,
+        typer.Option("--model", "-m", help="endpoint/model, e.g. ollama/qwen2.5:7b."),
+    ] = "ollama/qwen2.5:7b",
+    system: Annotated[str | None, typer.Option(help="A system message.")] = None,
+    temperature: Annotated[float, typer.Option(min=0.0, help="Sampling temperature.")] = 0.0,
+    max_tokens: Annotated[
+        int | None, typer.Option(min=1, help="Longest answer, in tokens.")
+    ] = None,
+    seed: Annotated[
+        int | None, typer.Option(help="Sampling seed, if the model supports it.")
+    ] = None,
+    timeout: Annotated[float, typer.Option(min=1.0, help="Seconds each attempt may take.")] = 120.0,
+    attempts: Annotated[int, typer.Option(min=1, help="Tries before giving up.")] = 4,
+) -> None:
+    """Send one prompt to a model and print the answer (to try the runner)."""
+    request = ChatRequest.ask(
+        model, prompt, system, temperature=temperature, max_tokens=max_tokens, seed=seed
+    )
+    runner = Runner(timeout=timeout, max_attempts=attempts)
+    try:
+        result = asyncio.run(runner.run(request))
+    except (RunnerError, ValueError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        if model.startswith("ollama/") and "could not reach" in str(error):
+            typer.echo("Is Ollama running? Start it with: open -a Ollama", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(result.text)
+    tries = "attempt" if result.attempts == 1 else "attempts"
+    typer.echo(
+        f"[{result.model}: {result.input_tokens} tokens in, {result.output_tokens} out, "
+        f"{result.attempts} {tries}, {result.seconds:.1f}s, finish: {result.finish_reason}]",
+        err=True,
+    )

@@ -41,3 +41,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0033](0033-replaying-the-scanner.md) | Replay the scanner on the snapshots before each migration | Accepted |
 | [0034](0034-replay-warning-sources.md) | Say why each flagged project was warned, and re-check labels the sheet cut off | Accepted |
 | [0035](0035-publishing-releases-to-pypi.md) | Publish each release to PyPI from the release workflow, with trusted publishing | Accepted |
+| [0036](0036-runner-speaks-openai-compatible-http.md) | The runner calls OpenAI-compatible endpoints with httpx, not LiteLLM, and uses only free models | Accepted |
