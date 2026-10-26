@@ -9,7 +9,15 @@ import typer
 
 from modelbump import __version__
 from modelbump.registry import Status, load_registry
-from modelbump.runner import ChatRequest, ResponseCache, Runner, RunnerError
+from modelbump.runner import (
+    Budget,
+    BudgetExceeded,
+    ChatRequest,
+    ChatResult,
+    ResponseCache,
+    Runner,
+    RunnerError,
+)
 from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
 from modelbump.scanner.report import (
     RENDERERS,
@@ -158,7 +166,9 @@ def check(
 
 @app.command()
 def ask(
-    prompt: Annotated[str, typer.Argument(help="What to ask the model.")],
+    prompts: Annotated[
+        list[str], typer.Argument(help="What to ask the model. Give several to ask them all.")
+    ],
     model: Annotated[
         str,
         typer.Option("--model", "-m", help="endpoint/model, e.g. ollama/qwen2.5:7b."),
@@ -180,39 +190,71 @@ def ask(
         bool,
         typer.Option("--cache/--no-cache", help="Reuse a stored answer to the same request."),
     ] = True,
+    budget_tokens: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop sending requests after this many tokens (in + out)."),
+    ] = None,
+    budget_requests: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop after this many requests to the model, retries included."),
+    ] = None,
 ) -> None:
-    """Send one prompt to a model and print the answer (to try the runner)."""
-    request = ChatRequest.ask(
-        model,
-        prompt,
-        system,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        seed=seed,
-        sample=sample,
-    )
+    """Send prompts to a model and print the answers (to try the runner)."""
+    requests = [
+        ChatRequest.ask(
+            model,
+            prompt,
+            system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+            sample=sample,
+        )
+        for prompt in prompts
+    ]
     cache = ResponseCache() if use_cache else None
-    runner = Runner(timeout=timeout, max_attempts=attempts, cache=cache)
+    budget = Budget(max_tokens=budget_tokens, max_requests=budget_requests)
+    runner = Runner(timeout=timeout, max_attempts=attempts, cache=cache, budget=budget)
     try:
-        result = asyncio.run(runner.run(request))
-    except (RunnerError, ValueError) as error:
+        outcomes = asyncio.run(runner.run_each(requests))
+    except ValueError as error:
         typer.echo(f"Error: {error}", err=True)
-        if model.startswith("ollama/") and "could not reach" in str(error):
-            typer.echo("Is Ollama running? Start it with: open -a Ollama", err=True)
         raise typer.Exit(code=1) from error
     finally:
         if cache is not None:
             cache.close()
-    typer.echo(result.text)
+    failed = False
+    for prompt, outcome in zip(prompts, outcomes, strict=True):
+        if len(prompts) > 1:
+            typer.echo(f"## {prompt}")
+        if isinstance(outcome, RunnerError):
+            failed = True
+            typer.echo(f"Error: {outcome}", err=True)
+            if model.startswith("ollama/") and "could not reach" in str(outcome):
+                typer.echo("Is Ollama running? Start it with: open -a Ollama", err=True)
+            continue
+        typer.echo(outcome.text)
+        typer.echo(_result_line(outcome), err=True)
+    if len(prompts) > 1 or budget_tokens is not None or budget_requests is not None:
+        typer.echo(budget.summary(), err=True)
+    if any(isinstance(o, BudgetExceeded) for o in outcomes):
+        typer.echo(
+            "Answers so far are cached: run the same command with a higher limit to continue.",
+            err=True,
+        )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _result_line(result: ChatResult) -> str:
     if result.cached:
         how = "from cache"
     else:
         tries = "attempt" if result.attempts == 1 else "attempts"
         how = f"{result.attempts} {tries}, {result.seconds:.1f}s"
-    typer.echo(
+    return (
         f"[{result.model}: {result.input_tokens} tokens in, {result.output_tokens} out, "
-        f"{how}, finish: {result.finish_reason}]",
-        err=True,
+        f"{how}, finish: {result.finish_reason}]"
     )
 
 

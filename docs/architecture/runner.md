@@ -2,12 +2,13 @@
 
 **Job:** send prompts to models and get answers back, reliably and for free.
 
-**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md)
+**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md), [ADR 0038](../adr/0038-budget-in-tokens-and-requests.md)
 
 ```mermaid
 flowchart LR
     req[ChatRequest<br/>model, messages,<br/>temperature, max_tokens, seed, sample] --> run[Runner<br/>timeout, retries,<br/>concurrency limit]
     run <--> cache[(cache.py<br/>SQLite, key = SHA-256<br/>of the request)]
+    run <--> budget[budget.py<br/>tokens and requests;<br/>stop at the limit]
     run --> resolve[backends.py<br/>endpoint/model to URL]
     resolve --> ollama[(Ollama on this machine<br/>/v1/chat/completions)]
     ollama --> result[ChatResult<br/>text, tokens, attempts, seconds]
@@ -46,6 +47,27 @@ Every successful answer is stored under the SHA-256 hash of its request: the mod
 
 The file is `~/.cache/modelbump/responses.sqlite` unless `MODELBUMP_CACHE_DIR` or `XDG_CACHE_HOME` is set.
 
+## Budget
+
+A `Budget` counts what a run uses and stops sending requests once a limit is reached. There are no dollars: every model is free, so the limits are **tokens** (in + out) and **requests** (retries included, because free tiers count every request). Cached answers cost nothing and are reported as savings.
+
+```console
+$ modelbump ask "Name a fruit." "Name a colour." "Name a city." --budget-requests 2
+## Name a fruit.
+Apple.
+## Name a colour.
+Blue.
+## Name a city.
+Error: Budget reached: 2 of 2 requests sent.
+Spent: 2 requests, 70 tokens (60 in, 10 out). From cache: 0 answers (0 tokens saved). Budget used: 100% of 2 requests.
+Answers so far are cached: run the same command with a higher limit to continue.
+```
+
+Running the same command again costs one request: the first two answers come from the cache.
+
+The limit is checked before each request. Requests already in flight finish, so the token total can end slightly above the limit, by at most what those answers use.
+
 ## Coming next
 
-- A budget limit on tokens.
+- Free API tier endpoints, after checking their current limits.
+- Old and new local model pairs for the experiments.

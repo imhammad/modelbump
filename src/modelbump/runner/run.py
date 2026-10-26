@@ -9,17 +9,14 @@ from typing import Any
 import httpx
 
 from modelbump.runner.backends import request_body, resolve_model
+from modelbump.runner.budget import Budget
 from modelbump.runner.cache import ResponseCache
-from modelbump.runner.types import ChatRequest, ChatResult
+from modelbump.runner.types import ChatRequest, ChatResult, RunnerError
 
 # Statuses worth another try: rate limits and server-side failures.
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 Sleep = Callable[[float], Awaitable[None]]
-
-
-class RunnerError(Exception):
-    """A call failed for good: a non-retryable error, or every attempt failed."""
 
 
 class Runner:
@@ -32,6 +29,8 @@ class Runner:
     - `concurrency`: requests in flight at once in `run_many`.
     - `cache`: answers are read from it first and written to it after a
       successful call (ADR 0037). None means every request calls the model.
+    - `budget`: counts tokens and requests, and stops sending requests once
+      a limit is reached (ADR 0038). None means no limit.
     """
 
     def __init__(
@@ -43,6 +42,7 @@ class Runner:
         max_delay: float = 30.0,
         concurrency: int = 2,
         cache: ResponseCache | None = None,
+        budget: Budget | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Sleep = asyncio.sleep,
         rng: random.Random | None = None,
@@ -57,6 +57,7 @@ class Runner:
         self.max_delay = max_delay
         self.concurrency = concurrency
         self.cache = cache
+        self.budget = budget
         self._transport = transport
         self._sleep = sleep
         self._rng = rng or random.Random()
@@ -67,13 +68,28 @@ class Runner:
             return await self._run(client, request)
 
     async def run_many(self, requests: Sequence[ChatRequest]) -> list[ChatResult]:
-        """Send many requests, at most `concurrency` at a time. Results keep the input order."""
+        """Send many requests, at most `concurrency` at a time. Results keep the input order.
+
+        Every request is tried, so all answers that succeed are cached. Then
+        the first error, if any, is raised.
+        """
+        outcomes = await self.run_each(requests)
+        for outcome in outcomes:
+            if isinstance(outcome, RunnerError):
+                raise outcome
+        return [o for o in outcomes if isinstance(o, ChatResult)]
+
+    async def run_each(self, requests: Sequence[ChatRequest]) -> list[ChatResult | RunnerError]:
+        """Like `run_many`, but each failed request gives its error in place of a result."""
         gate = asyncio.Semaphore(self.concurrency)
         async with self._client() as client:
 
-            async def one(request: ChatRequest) -> ChatResult:
+            async def one(request: ChatRequest) -> ChatResult | RunnerError:
                 async with gate:
-                    return await self._run(client, request)
+                    try:
+                        return await self._run(client, request)
+                    except RunnerError as error:
+                        return error
 
             return list(await asyncio.gather(*(one(r) for r in requests)))
 
@@ -84,8 +100,12 @@ class Runner:
         if self.cache is not None:
             cached = self.cache.get(request)
             if cached is not None:
+                if self.budget is not None:
+                    self.budget.record(cached)
                 return cached
         result = await self._call(client, request)
+        if self.budget is not None:
+            self.budget.record(result)
         if self.cache is not None:
             self.cache.put(request, result)
         return result
@@ -98,6 +118,8 @@ class Runner:
         start = time.monotonic()
         for attempt in range(1, self.max_attempts + 1):
             wait: float | None = None
+            if self.budget is not None:
+                self.budget.before_request()
             try:
                 response = await client.post(url, json=body, headers=headers)
             except httpx.TimeoutException:

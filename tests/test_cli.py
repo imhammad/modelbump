@@ -229,10 +229,10 @@ def test_scan_skip_tests(tmp_path: Path) -> None:
 def test_ask_prints_the_answer_and_a_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     from modelbump.runner import ChatResult, Runner
 
-    async def fake_run(self: Runner, request: object) -> ChatResult:
-        return ChatResult("Hi there.", "ollama/qwen2.5:7b", 12, 3, "stop", 1, 0.5)
+    async def fake_run_each(self: Runner, requests: list[object]) -> list[ChatResult]:
+        return [ChatResult("Hi there.", "ollama/qwen2.5:7b", 12, 3, "stop", 1, 0.5)]
 
-    monkeypatch.setattr(Runner, "run", fake_run)
+    monkeypatch.setattr(Runner, "run_each", fake_run_each)
     result = runner.invoke(app, ["ask", "Say hi"])
     assert result.exit_code == 0
     assert result.stdout == "Hi there.\n"
@@ -242,10 +242,10 @@ def test_ask_prints_the_answer_and_a_summary(monkeypatch: pytest.MonkeyPatch) ->
 def test_ask_explains_when_ollama_is_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
     from modelbump.runner import Runner, RunnerError
 
-    async def fake_run(self: Runner, request: object) -> object:
-        raise RunnerError("ollama/qwen2.5:7b: could not reach http://localhost:11434/v1")
+    async def fake_run_each(self: Runner, requests: list[object]) -> list[RunnerError]:
+        return [RunnerError("ollama/qwen2.5:7b: could not reach http://localhost:11434/v1")]
 
-    monkeypatch.setattr(Runner, "run", fake_run)
+    monkeypatch.setattr(Runner, "run_each", fake_run_each)
     result = runner.invoke(app, ["ask", "Say hi"])
     assert result.exit_code == 1
     assert "open -a Ollama" in result.stderr
@@ -309,3 +309,36 @@ def test_cache_info_and_clear(tmp_path: Path) -> None:
     cleared = runner.invoke(app, ["cache", "clear", "--yes"])
     assert cleared.exit_code == 0
     assert "Deleted 1 stored answers." in cleared.stdout
+
+
+def test_ask_several_prompts_with_a_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from modelbump.runner import Runner
+
+    def server(request: httpx.Request) -> httpx.Response:
+        prompt = json.loads(request.content)["messages"][-1]["content"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": prompt.upper()}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            },
+        )
+
+    real_init = Runner.__init__
+
+    def init_with_fake_server(self: Runner, **options: object) -> None:
+        real_init(self, transport=httpx.MockTransport(server), **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Runner, "__init__", init_with_fake_server)
+    stopped = runner.invoke(app, ["ask", "a", "b", "c", "--budget-requests", "2"])
+    assert stopped.exit_code == 1
+    assert stopped.stdout == "## a\nA\n## b\nB\n## c\n"
+    assert "Budget reached: 2 of 2 requests sent." in stopped.stderr
+    assert "run the same command with a higher limit" in stopped.stderr
+    rerun = runner.invoke(app, ["ask", "a", "b", "c", "--budget-requests", "2"])
+    assert rerun.exit_code == 0
+    assert rerun.stdout.endswith("## c\nC\n")
+    assert "Spent: 1 requests, 15 tokens" in rerun.stderr
+    assert "From cache: 2 answers (30 tokens saved)." in rerun.stderr

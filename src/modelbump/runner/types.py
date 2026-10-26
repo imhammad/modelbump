@@ -6,6 +6,10 @@ from typing import Literal
 Role = Literal["system", "user", "assistant"]
 
 
+class RunnerError(Exception):
+    """A call failed for good: a non-retryable error, or every attempt failed."""
+
+
 @dataclass(frozen=True)
 class Message:
     """One chat message."""
