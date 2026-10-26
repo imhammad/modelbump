@@ -255,3 +255,57 @@ def test_ask_rejects_a_model_without_an_endpoint() -> None:
     result = runner.invoke(app, ["ask", "Say hi", "--model", "qwen2.5:7b"])
     assert result.exit_code == 1
     assert "endpoint/model" in result.stderr
+
+
+def test_ask_reads_the_second_identical_question_from_the_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from modelbump.runner import Runner
+
+    calls = []
+
+    def server(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Apple"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            },
+        )
+
+    real_init = Runner.__init__
+
+    def init_with_fake_server(self: Runner, **options: object) -> None:
+        real_init(self, transport=httpx.MockTransport(server), **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Runner, "__init__", init_with_fake_server)
+    first = runner.invoke(app, ["ask", "Name a fruit."])
+    second = runner.invoke(app, ["ask", "Name a fruit."])
+    fresh = runner.invoke(app, ["ask", "Name a fruit.", "--no-cache"])
+    assert first.stdout == second.stdout == fresh.stdout == "Apple\n"
+    assert "1 attempt" in first.stderr
+    assert "from cache" in second.stderr
+    assert "from cache" not in fresh.stderr
+    assert len(calls) == 2
+
+
+def test_cache_info_and_clear(tmp_path: Path) -> None:
+    from modelbump.runner import ChatRequest, ChatResult, ResponseCache
+
+    cache = ResponseCache()
+    request = ChatRequest.ask("ollama/m", "hi")
+    cache.put(request, ChatResult("hello", request.model, 3, 7, "stop", 1, 0.2))
+    cache.close()
+    info = runner.invoke(app, ["cache", "info"])
+    assert info.exit_code == 0
+    assert "Answers stored: 1 (7 output tokens)" in info.stdout
+    assert "modelbump-cache" in info.stdout
+    kept = runner.invoke(app, ["cache", "clear"], input="n\n")
+    assert kept.exit_code == 1
+    assert "Answers stored: 1" in runner.invoke(app, ["cache", "info"]).stdout
+    cleared = runner.invoke(app, ["cache", "clear", "--yes"])
+    assert cleared.exit_code == 0
+    assert "Deleted 1 stored answers." in cleared.stdout

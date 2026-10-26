@@ -42,3 +42,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0034](0034-replay-warning-sources.md) | Say why each flagged project was warned, and re-check labels the sheet cut off | Accepted |
 | [0035](0035-publishing-releases-to-pypi.md) | Publish each release to PyPI from the release workflow, with trusted publishing | Accepted |
 | [0036](0036-runner-speaks-openai-compatible-http.md) | The runner calls OpenAI-compatible endpoints with httpx, not LiteLLM, and uses only free models | Accepted |
+| [0037](0037-response-cache-in-sqlite.md) | Cache model answers in one SQLite file, keyed by a hash of the whole request | Accepted |

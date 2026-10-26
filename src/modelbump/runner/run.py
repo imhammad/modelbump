@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from modelbump.runner.backends import request_body, resolve_model
+from modelbump.runner.cache import ResponseCache
 from modelbump.runner.types import ChatRequest, ChatResult
 
 # Statuses worth another try: rate limits and server-side failures.
@@ -29,6 +30,8 @@ class Runner:
     - `base_delay`, `max_delay`: exponential backoff with full jitter, in seconds.
       A `Retry-After` header from the server wins when it asks for longer.
     - `concurrency`: requests in flight at once in `run_many`.
+    - `cache`: answers are read from it first and written to it after a
+      successful call (ADR 0037). None means every request calls the model.
     """
 
     def __init__(
@@ -39,6 +42,7 @@ class Runner:
         base_delay: float = 1.0,
         max_delay: float = 30.0,
         concurrency: int = 2,
+        cache: ResponseCache | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Sleep = asyncio.sleep,
         rng: random.Random | None = None,
@@ -52,6 +56,7 @@ class Runner:
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.concurrency = concurrency
+        self.cache = cache
         self._transport = transport
         self._sleep = sleep
         self._rng = rng or random.Random()
@@ -76,6 +81,16 @@ class Runner:
         return httpx.AsyncClient(timeout=self.timeout, transport=self._transport)
 
     async def _run(self, client: httpx.AsyncClient, request: ChatRequest) -> ChatResult:
+        if self.cache is not None:
+            cached = self.cache.get(request)
+            if cached is not None:
+                return cached
+        result = await self._call(client, request)
+        if self.cache is not None:
+            self.cache.put(request, result)
+        return result
+
+    async def _call(self, client: httpx.AsyncClient, request: ChatRequest) -> ChatResult:
         endpoint, model_name = resolve_model(request.model)
         url = f"{endpoint.base_url}/chat/completions"
         body = request_body(request, model_name)
