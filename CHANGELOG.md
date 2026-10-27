@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/imhammad/modelbump/compare/v0.2.0...v0.3.0) (2026-10-27)
+
+
+### Features
+
+* **research:** add the real-model results, figures and token counts (ADR 0047) ([#67](https://github.com/imhammad/modelbump/issues/67)) ([eec8049](https://github.com/imhammad/modelbump/commit/eec8049c3b56e67b64cd67571d03df8d0c467b5b))
+* **research:** test the stats engine on real local models (ADR 0046) ([#66](https://github.com/imhammad/modelbump/issues/66)) ([5223a3e](https://github.com/imhammad/modelbump/commit/5223a3e7a7c565c36e6abf17291b5eae488a9b83))
+* **stats:** accept scores between 0 and 1 and stop cases that look fine (ADR 0045) ([#65](https://github.com/imhammad/modelbump/issues/65)) ([ea2d6ed](https://github.com/imhammad/modelbump/commit/ea2d6edbe06b255a5ba32172e40153cb8eaf49d0))
+* **stats:** add a simulation study and property tests for the stats engine (ADR 0044) ([#64](https://github.com/imhammad/modelbump/issues/64)) ([3d788ff](https://github.com/imhammad/modelbump/commit/3d788ff9745f7dcd631a833c828b8f4e39057ef1))
+* **stats:** control false alarms across a suite with e-BH (ADR 0043) ([#63](https://github.com/imhammad/modelbump/issues/63)) ([c364c14](https://github.com/imhammad/modelbump/commit/c364c14c97988eabf497a593665b392186660936))
+* **stats:** decide one test case from pass counts (ADR 0041) ([#60](https://github.com/imhammad/modelbump/issues/60)) ([dccad04](https://github.com/imhammad/modelbump/commit/dccad04b8fdd7b484a829d9b3144dade92aaea9e))
+* **stats:** stop sampling as soon as the verdict is clear (ADR 0042) ([#62](https://github.com/imhammad/modelbump/issues/62)) ([8b51322](https://github.com/imhammad/modelbump/commit/8b5132296cec5541f81bfa013898815351d66be9))
+
 ## [0.2.0](https://github.com/imhammad/modelbump/compare/v0.1.0...v0.2.0) (2026-10-27)
 
 
