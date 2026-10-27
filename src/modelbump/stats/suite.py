@@ -1,4 +1,4 @@
-"""Control false alarms across a whole test suite (ADR 0043).
+"""Control false alarms across a whole test suite (ADRs 0043 and 0045).
 
 Testing 300 test cases at alpha = 0.05 each gives about 15 false alarms when
 nothing changed. Instead we control the false discovery rate (FDR): among the
@@ -22,7 +22,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from modelbump.stats.item import DEFAULT_MARGIN, Verdict
-from modelbump.stats.sequential import DEFAULT_MAX_RUNS, Evidence, SequentialTest
+from modelbump.stats.sequential import (
+    DEFAULT_FUTILITY_AFTER,
+    DEFAULT_MAX_RUNS,
+    Evidence,
+    SequentialTest,
+)
 
 DEFAULT_FDR = 0.05
 
@@ -69,9 +74,10 @@ class SuiteItem:
     name: str
     verdict: Verdict
     runs: int
-    old_passes: int
-    new_passes: int
+    old_passes: float
+    new_passes: float
     evidence: Evidence
+    looks_fine: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,16 +121,20 @@ def decide_suite(evidence: Sequence[Evidence], q: float = DEFAULT_FDR) -> list[V
 
 
 def run_suite(
-    items: Mapping[str, Callable[[], tuple[bool, bool]]],
+    items: Mapping[str, Callable[[], tuple[float, float]]],
     *,
     q: float = DEFAULT_FDR,
     margin: float = DEFAULT_MARGIN,
     max_runs: int = DEFAULT_MAX_RUNS,
+    futility: float | None = None,
+    futility_after: int = DEFAULT_FUTILITY_AFTER,
 ) -> SuiteResult:
     """Run every test case until its verdict is clear, then control FDR at q per claim.
 
     `items` maps a test case's name to a function that returns one fresh
-    (old_pass, new_pass) pair each time it is called.
+    (old_score, new_score) pair each time it is called. With `futility`, a
+    case whose REGRESSED wealth falls below it (after `futility_after` rounds)
+    stops early as looking fine (ADR 0045).
     """
     _check_q(q)
     if not items:
@@ -133,7 +143,13 @@ def run_suite(
     tests = []
     for next_round in items.values():
         # Stopping at m/q is enough for e-BH to reject this test case on its own.
-        test = SequentialTest(alpha=q / m, margin=margin, max_runs=max_runs)
+        test = SequentialTest(
+            alpha=q / m,
+            margin=margin,
+            max_runs=max_runs,
+            futility=futility,
+            futility_after=futility_after,
+        )
         while not test.done:
             test.add(*next_round())
         tests.append(test)
@@ -147,6 +163,7 @@ def run_suite(
                 old_passes=test.old_passes,
                 new_passes=test.new_passes,
                 evidence=test.evidence,
+                looks_fine=test.looks_fine,
             )
             for name, test, verdict in zip(items, tests, verdicts, strict=True)
         ),
@@ -156,13 +173,26 @@ def run_suite(
 
 
 SIMULATED_PASS_RATES = (0.6, 0.8, 0.9, 1.0)
+# How tightly simulated scores cluster around their mean (Beta a + b).
+SCORE_CONCENTRATION = 10.0
+
+
+def draw_score(rng: random.Random, mean: float, scores: bool) -> float:
+    """One simulated answer: pass/fail with chance `mean`, or a Beta score with that mean."""
+    if not 0 <= mean <= 1:
+        raise ValueError(f"mean must be between 0 and 1, got {mean}")
+    if not scores:
+        return float(rng.random() < mean)
+    if mean in (0.0, 1.0):
+        return mean
+    return rng.betavariate(mean * SCORE_CONCENTRATION, (1 - mean) * SCORE_CONCENTRATION)
 
 
 @dataclass(frozen=True)
 class SimulatedSuite:
     """Made-up test cases with known true pass rates, for checking the engine."""
 
-    items: dict[str, Callable[[], tuple[bool, bool]]]
+    items: dict[str, Callable[[], tuple[float, float]]]
     true_rates: dict[str, tuple[float, float]]
 
     def really_worse(self, name: str) -> bool:
@@ -177,7 +207,7 @@ def simulated_suite(size: int, regressed: int, drop: float, seed: int) -> Simula
     if not 0 < drop <= 1:
         raise ValueError(f"drop must be above 0 and at most 1, got {drop}")
     picker = random.Random(seed)
-    items: dict[str, Callable[[], tuple[bool, bool]]] = {}
+    items: dict[str, Callable[[], tuple[float, float]]] = {}
     true_rates: dict[str, tuple[float, float]] = {}
     for index in range(size):
         name = f"case-{index + 1:03d}"
@@ -187,8 +217,8 @@ def simulated_suite(size: int, regressed: int, drop: float, seed: int) -> Simula
 
         def next_round(
             answers: random.Random = answers, old: float = old, new: float = new
-        ) -> tuple[bool, bool]:
-            return answers.random() < old, answers.random() < new
+        ) -> tuple[float, float]:
+            return draw_score(answers, old, False), draw_score(answers, new, False)
 
         items[name] = next_round
         true_rates[name] = (old, new)

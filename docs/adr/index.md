@@ -50,3 +50,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0042](0042-sequential-stopping-by-betting.md) | Stop asking as soon as the verdict is clear, with test-by-betting wealths that are safe to check after every answer | Accepted |
 | [0043](0043-suite-control-with-e-bh.md) | Control the false discovery rate across a suite with e-BH on the betting wealths | Accepted |
 | [0044](0044-simulation-study-of-the-stats-engine.md) | Check the stats engine with a seeded simulation study and property tests, against a single-run diff and fixed-k baselines | Accepted |
+| [0045](0045-scores-and-stopping-cases-that-look-fine.md) | Accept scores between 0 and 1, and optionally stop test cases that look fine | Accepted |

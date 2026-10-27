@@ -2,7 +2,7 @@
 
 **Job:** decide, from repeated answers, whether the new model is worse than the old one, and control how often that decision is wrong.
 
-**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md)
+**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md), [ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md)
 
 ```mermaid
 flowchart LR
@@ -95,12 +95,40 @@ suite = run_suite({"refund-policy": next_round_a, "json-schema": next_round_b}, 
 print(suite.named(Verdict.REGRESSED))
 ```
 
+## Scores, not only pass or fail
+
+The sequential test also takes any score between 0 and 1, for example a judge's rating rescaled to 0–1. The margin is then in score units. Scores usually vary less than pass/fail, so verdicts come sooner ([ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md)):
+
+```console
+$ modelbump stats simulate 0.9 0.9 --scores
+Simulated test case: old model scores 0.90 on average, new model 0.90 (seed 1)
+Stopped early after 59 answers per model (old mean 0.89, new mean 0.91)
+Verdict: EQUIVALENT (the two models differ by less than the margin)
+Evidence (a claim is proven at 20): regressed 0.7, improved 1.4, equivalent 20.5
+```
+
+With pass/fail at 90%, the same case runs to the 200-answer cap without a verdict.
+
+## Stopping cases that look fine
+
+`run_suite(..., max_runs=500, futility=0.1)` stops a test case once its REGRESSED evidence falls below 0.1 (after 20 answers). It saves answers on unchanged cases and lets a higher cap find small drops. It is off by default, because it also gives fewer EQUIVALENT verdicts.
+
+```console
+$ modelbump stats simulate-suite --drop 0.15 --max-runs 500 --futility 0.1
+Simulated suite: 300 test cases, 30 made worse by 15 points (seed 1)
+REGRESSED: 29 (29 really worse, 0 false alarms)
+IMPROVED: 0
+EQUIVALENT: 131
+INCONCLUSIVE: 140
+Answers per model: 91,494 (305 per test case)
+Stopped early because they looked fine: 108
+Without suite control: 7 false alarms
+```
+
 ## How well it works
 
 The [simulation study](../research/stats-sim.md) compares the engine with a single-run diff and fixed-k tests, from one command: `uv run python -m research.stats_sim.run`.
 
 ## Still to come in Phase 4
 
-- Options to stop test cases that look fine and to raise the answer cap (the study found this wins back power on small drops).
-- Scores between 0 and 1, not only pass or fail.
 - The RQ2 experiment on local model pairs, such as `ollama/qwen2.5:7b` to `ollama/qwen3:8b`.

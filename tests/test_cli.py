@@ -496,3 +496,23 @@ def test_stats_simulate_suite_rejects_more_regressions_than_items() -> None:
     result = runner.invoke(app, ["stats", "simulate-suite", "--items", "5", "--regressed", "6"])
     assert result.exit_code == 2
     assert "regressed must be between 0 and 5" in result.stderr
+
+
+def test_stats_simulate_with_scores_reports_means() -> None:
+    result = runner.invoke(app, ["stats", "simulate", "0.9", "0.9", "--scores"])
+    assert result.exit_code == 0
+    assert "old model scores 0.90 on average, new model 0.90 (seed 1)" in result.stdout
+    assert (
+        "Stopped early after 59 answers per model (old mean 0.89, new mean 0.91)" in result.stdout
+    )
+    assert "Verdict: EQUIVALENT" in result.stdout
+
+
+def test_stats_simulate_suite_with_futility_counts_cases_that_looked_fine() -> None:
+    result = runner.invoke(
+        app,
+        ["stats", "simulate-suite", "--items", "40", "--regressed", "10", "--futility", "0.1"],
+    )
+    assert result.exit_code == 0
+    assert "REGRESSED: 10 (10 really worse, 0 false alarms)" in result.stdout
+    assert "Stopped early because they looked fine:" in result.stdout

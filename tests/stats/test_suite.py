@@ -1,4 +1,6 @@
-"""Tests for suite-level false-alarm control (ADR 0043)."""
+"""Tests for suite-level false-alarm control (ADRs 0043 and 0045)."""
+
+import random
 
 import pytest
 
@@ -7,6 +9,7 @@ from modelbump.stats import (
     Verdict,
     benjamini_hochberg,
     decide_suite,
+    draw_score,
     e_benjamini_hochberg,
     run_sequential,
     run_suite,
@@ -119,3 +122,29 @@ def test_simulated_suite_rejects_bad_settings(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         simulated_suite(size, regressed, drop, seed=1)
+
+
+def test_futility_saves_answers_and_still_finds_clear_regressions() -> None:
+    plain = run_suite(simulated_suite(size=40, regressed=10, drop=0.3, seed=1).items, max_runs=300)
+    quick = run_suite(
+        simulated_suite(size=40, regressed=10, drop=0.3, seed=1).items,
+        max_runs=300,
+        futility=0.1,
+    )
+    assert sorted(quick.named(Verdict.REGRESSED)) == sorted(plain.named(Verdict.REGRESSED))
+    assert len(quick.named(Verdict.REGRESSED)) == 10
+    assert quick.total_runs < plain.total_runs
+    assert any(item.looks_fine for item in quick.items)
+    assert not any(item.looks_fine for item in plain.items)
+
+
+def test_draw_score_gives_pass_fail_or_a_score_with_the_right_mean() -> None:
+    rng = random.Random(0)
+    assert {draw_score(rng, 0.5, False) for _ in range(50)} == {0.0, 1.0}
+    assert draw_score(rng, 1.0, True) == 1.0
+    assert draw_score(rng, 0.0, True) == 0.0
+    scores = [draw_score(rng, 0.7, True) for _ in range(4000)]
+    assert all(0 <= s <= 1 for s in scores)
+    assert sum(scores) / len(scores) == pytest.approx(0.7, abs=0.02)
+    with pytest.raises(ValueError, match="mean must be"):
+        draw_score(rng, 1.2, True)

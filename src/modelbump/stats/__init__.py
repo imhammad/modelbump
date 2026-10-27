@@ -1,4 +1,4 @@
-"""Stats engine: decide whether a new model is worse than the old one (ADRs 0041-0044)."""
+"""Stats engine: decide whether a new model is worse than the old one (ADRs 0041-0045)."""
 
 from modelbump.stats.item import (
     DEFAULT_ALPHA,
@@ -13,6 +13,7 @@ from modelbump.stats.item import (
     wilson_interval,
 )
 from modelbump.stats.sequential import (
+    DEFAULT_FUTILITY_AFTER,
     DEFAULT_MAX_RUNS,
     Evidence,
     SequentialResult,
@@ -26,6 +27,7 @@ from modelbump.stats.suite import (
     SuiteResult,
     benjamini_hochberg,
     decide_suite,
+    draw_score,
     e_benjamini_hochberg,
     run_suite,
     simulated_suite,
@@ -34,6 +36,7 @@ from modelbump.stats.suite import (
 __all__ = [
     "DEFAULT_ALPHA",
     "DEFAULT_FDR",
+    "DEFAULT_FUTILITY_AFTER",
     "DEFAULT_MARGIN",
     "DEFAULT_MAX_RUNS",
     "Evidence",
@@ -50,6 +53,7 @@ __all__ = [
     "compare_scores",
     "decide_suite",
     "difference_interval",
+    "draw_score",
     "e_benjamini_hochberg",
     "regression_p_value",
     "run_sequential",

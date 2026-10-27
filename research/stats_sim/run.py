@@ -246,7 +246,7 @@ def _fixed_k_counts(suite: SimulatedSuite, k: int) -> dict[str, tuple[int, int]]
     counts = {}
     for name, next_round in suite.items.items():
         answers = [next_round() for _ in range(k)]
-        counts[name] = (sum(a for a, _ in answers), sum(b for _, b in answers))
+        counts[name] = (int(sum(a for a, _ in answers)), int(sum(b for _, b in answers)))
     return counts
 
 

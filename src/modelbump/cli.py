@@ -37,6 +37,7 @@ from modelbump.stats import (
     DEFAULT_MAX_RUNS,
     Verdict,
     compare_counts,
+    draw_score,
     run_sequential,
     run_suite,
     simulated_suite,
@@ -435,29 +436,44 @@ def stats_simulate(
     alpha: Annotated[
         float, typer.Option(help="Chance of a wrong REGRESSED, IMPROVED or EQUIVALENT claim.")
     ] = DEFAULT_ALPHA,
+    scores: Annotated[
+        bool,
+        typer.Option(
+            "--scores",
+            help="Answers get a score between 0 and 1 with these means, not pass/fail.",
+        ),
+    ] = False,
 ) -> None:
     """Pretend two models answer one test case, and stop as soon as the verdict is clear."""
     _check_rate(old_rate, "OLD_RATE")
     _check_rate(new_rate, "NEW_RATE")
     rng = random.Random(seed)
 
-    def next_round() -> tuple[bool, bool]:
-        return rng.random() < old_rate, rng.random() < new_rate
+    def next_round() -> tuple[float, float]:
+        return draw_score(rng, old_rate, scores), draw_score(rng, new_rate, scores)
 
     try:
         result = run_sequential(next_round, alpha=alpha, margin=margin, max_runs=max_runs)
     except ValueError as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
-    typer.echo(
-        f"Simulated test case: old model passes {old_rate:.0%}, new model {new_rate:.0%} "
-        f"(seed {seed})"
-    )
+    if scores:
+        typer.echo(
+            f"Simulated test case: old model scores {old_rate:.2f} on average, "
+            f"new model {new_rate:.2f} (seed {seed})"
+        )
+        seen = (
+            f"old mean {result.old_passes / result.runs:.2f}, "
+            f"new mean {result.new_passes / result.runs:.2f}"
+        )
+    else:
+        typer.echo(
+            f"Simulated test case: old model passes {old_rate:.0%}, new model {new_rate:.0%} "
+            f"(seed {seed})"
+        )
+        seen = f"old {result.old_passes:g}/{result.runs}, new {result.new_passes:g}/{result.runs}"
     how = "Stopped early" if result.stopped_early else "Reached --max-runs"
-    typer.echo(
-        f"{how} after {result.runs} answers per model "
-        f"(old {result.old_passes}/{result.runs}, new {result.new_passes}/{result.runs})"
-    )
+    typer.echo(f"{how} after {result.runs} answers per model ({seen})")
     typer.echo(f"Verdict: {result.verdict} ({_VERDICT_MEANING[result.verdict]})")
     evidence = result.evidence
     typer.echo(
@@ -489,11 +505,18 @@ def stats_simulate_suite(
             help="Largest change in pass rate that still counts as the same (0.1 = 10 points)."
         ),
     ] = DEFAULT_MARGIN,
+    futility: Annotated[
+        float | None,
+        typer.Option(
+            help="Stop a test case that looks fine once its REGRESSED evidence falls below "
+            "this (e.g. 0.1), after 20 answers."
+        ),
+    ] = None,
 ) -> None:
     """Pretend two models answer a whole suite, and control false alarms across it."""
     try:
         suite = simulated_suite(size, regressed, drop, seed)
-        result = run_suite(suite.items, q=q, margin=margin, max_runs=max_runs)
+        result = run_suite(suite.items, q=q, margin=margin, max_runs=max_runs, futility=futility)
         uncorrected = [
             name
             for name, next_round in simulated_suite(size, regressed, drop, seed).items.items()
@@ -520,4 +543,7 @@ def stats_simulate_suite(
     typer.echo(
         f"Answers per model: {result.total_runs:,} ({result.total_runs / size:.0f} per test case)"
     )
+    if futility is not None:
+        fine = sum(item.looks_fine for item in result.items)
+        typer.echo(f"Stopped early because they looked fine: {fine}")
     typer.echo(f"Without suite control: {len(uncorrected)} false alarms")

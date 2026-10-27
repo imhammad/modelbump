@@ -9,6 +9,7 @@ from modelbump.stats import (
     SequentialTest,
     Verdict,
     compare_counts,
+    draw_score,
     run_sequential,
 )
 
@@ -123,3 +124,89 @@ def test_a_30_point_drop_is_caught_in_far_fewer_answers_than_a_fixed_design() ->
         assert result.verdict is Verdict.REGRESSED
         runs.append(result.runs)
     assert sum(runs) / len(runs) < 60
+
+
+# ---------------------------------------------------------------- scores (ADR 0045)
+
+
+def _simulate_scores(old_mean: float, new_mean: float, seed: int) -> SequentialResult:
+    rng = random.Random(f"scores-{seed}")
+    return run_sequential(
+        lambda: (draw_score(rng, old_mean, True), draw_score(rng, new_mean, True))
+    )
+
+
+@pytest.mark.parametrize(("old", "new"), [(-0.1, 0.5), (0.5, 1.5)])
+def test_scores_outside_zero_and_one_are_rejected(old: float, new: float) -> None:
+    with pytest.raises(ValueError, match="score must be between 0 and 1"):
+        SequentialTest().add(old, new)
+
+
+def test_scores_between_zero_and_one_are_summed() -> None:
+    test = SequentialTest()
+    test.add(0.25, 0.75)
+    test.add(True, False)
+    assert (test.old_passes, test.new_passes, test.runs) == (1.25, 0.75, 2)
+
+
+@pytest.mark.parametrize("mean_score", [0.5, 0.9])
+def test_scores_with_the_same_mean_give_few_false_alarms(mean_score: float) -> None:
+    alarms = sum(
+        _simulate_scores(mean_score, mean_score, seed).verdict is Verdict.REGRESSED
+        for seed in range(300)
+    )
+    assert alarms / 300 <= 0.05
+
+
+def test_scores_can_show_equivalence_where_pass_fail_cannot() -> None:
+    # Same means; scores vary less than pass/fail, so equivalence is reachable.
+    assert _simulate_scores(0.9, 0.9, seed=1).verdict is Verdict.EQUIVALENT
+    rng = random.Random(1)
+    pass_fail = run_sequential(lambda: (rng.random() < 0.9, rng.random() < 0.9))
+    assert pass_fail.verdict is Verdict.INCONCLUSIVE
+
+
+def test_scores_catch_a_drop_in_the_mean() -> None:
+    assert _simulate_scores(0.9, 0.6, seed=2).verdict is Verdict.REGRESSED
+
+
+# ---------------------------------------------------------------- futility (ADR 0045)
+
+
+def test_a_case_that_looks_fine_stops_early_without_a_verdict() -> None:
+    result = run_sequential(lambda: (False, True), futility=0.1, max_runs=500)
+    # A gain proves IMPROVED before the futility check matters.
+    assert result.verdict is Verdict.IMPROVED
+    # No difference on average: the REGRESSED wealth drifts down and the case stops.
+    flips = iter([(True, True), (False, True), (True, True), (True, False)] * 100)
+    looking_fine = run_sequential(lambda: next(flips), futility=0.2, max_runs=400)
+    assert looking_fine.looks_fine
+    assert looking_fine.verdict is Verdict.INCONCLUSIVE
+    assert looking_fine.runs == 170
+    assert looking_fine.evidence.regressed < 0.2
+    assert not looking_fine.stopped_early
+
+
+def test_futility_waits_for_futility_after_rounds() -> None:
+    test = SequentialTest(futility=0.99, futility_after=5)
+    for _ in range(4):
+        test.add(False, True)
+    assert not test.looks_fine
+    test.add(False, True)
+    assert test.looks_fine
+    assert test.done
+    with pytest.raises(ValueError, match="already stopped"):
+        test.add(True, True)
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    [
+        ({"futility": 0.0}, "futility"),
+        ({"futility": 1.0}, "futility"),
+        ({"futility_after": 0}, "futility_after"),
+    ],
+)
+def test_bad_futility_settings_are_rejected(settings: dict[str, float], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        SequentialTest(**settings)  # type: ignore[arg-type]

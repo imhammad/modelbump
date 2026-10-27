@@ -133,3 +133,21 @@ def test_e_bh_rejects_a_set_of_largest_e_values_each_above_one_over_q(
 @given(st.lists(st.floats(min_value=0, max_value=1e4), min_size=1, max_size=50))
 def test_a_bigger_q_never_rejects_fewer(e_values: list[float]) -> None:
     assert sum(e_benjamini_hochberg(e_values, 0.01)) <= sum(e_benjamini_hochberg(e_values, 0.1))
+
+
+unit_scores = st.floats(min_value=0, max_value=1, allow_nan=False)
+
+
+@given(st.lists(st.tuples(unit_scores, unit_scores), max_size=60))
+def test_score_wealths_stay_positive_and_mirror_when_models_swap(
+    rounds: list[tuple[float, float]],
+) -> None:
+    forward, backward = SequentialTest(max_runs=1000), SequentialTest(max_runs=1000)
+    for old, new in rounds:
+        if forward.done:
+            break
+        forward.add(old, new)
+        backward.add(new, old)
+        a, b = forward.evidence, backward.evidence
+        assert min(a.regressed, a.improved, a.equivalent) > 0
+        assert abs(a.regressed - b.improved) <= 1e-9 * max(1.0, a.regressed)
