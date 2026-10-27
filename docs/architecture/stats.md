@@ -2,7 +2,7 @@
 
 **Job:** decide, from repeated answers, whether the new model is worse than the old one, and control how often that decision is wrong.
 
-**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md), [ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md), [ADR 0046](../adr/0046-real-model-experiment.md)
+**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md), [ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md), [ADR 0046](../adr/0046-real-model-experiment.md), [ADR 0047](../adr/0047-real-model-results.md)
 
 ```mermaid
 flowchart LR
@@ -129,6 +129,17 @@ Without suite control: 7 false alarms
 
 The [simulation study](../research/stats-sim.md) compares the engine with a single-run diff and fixed-k tests, from one command: `uv run python -m research.stats_sim.run`. The [real-model experiment](../research/stats-real.md) does the same on answers from Qwen 2.5 and Qwen 3, run locally with Ollama.
 
-## Still to come in Phase 4
+## Which suite method to use
 
-- The real-model results, then release v0.3.0.
+On real answers from Qwen 2.5 and Qwen 3 ([ADR 0047](../adr/0047-real-model-results.md)), both suite methods kept false alarms near zero, where a single-run diff flagged 2.6 of 60 unchanged cases per run. With only 50 answers per case, fixed k + BH found more of the real drops. So:
+
+| Your budget | Use |
+|-------------|-----|
+| A fixed, small number of answers per case (about 100 or fewer) | Fixed k + BH (`benjamini_hochberg` on `regression_p_value`) |
+| Answers bought one at a time, cap of 200 or more, or you watch results while it runs | Sequential + e-BH (`run_suite`) |
+
+Whatever the method, read the verdicts per test case: in the real upgrade every task family got better on average, yet 3 cases got worse.
+
+## Status
+
+Phase 4 is complete and ships in v0.3.0. Phase 5 builds test suites from your app's own prompts and runs them through this engine.

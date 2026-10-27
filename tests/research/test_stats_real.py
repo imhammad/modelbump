@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from modelbump.runner import ChatRequest, ResponseCache, Runner
+from research.stats_real.figures import plot_methods, plot_upgrade
 from research.stats_real.run import (
     NEW_MODEL,
     OLD_MODEL,
@@ -158,6 +159,12 @@ def test_quick_run_writes_results_and_finds_the_broken_family(
     out = capsys.readouterr().out
     assert "12 test cases, 10 answers per model per comparison: 360 answers in all" in out
     assert "  multiply: 88% / 0%" in out
+    assert results["tokens_per_answer"] == {OLD_MODEL: 33, NEW_MODEL: 33}
+    assert "Tokens per answer (prompt + reply): ollama/qwen2.5:7b 33.0" in out
+    assert "  REGRESSED under sequential + e-BH: " in out
+    assert json.loads(lines[0])["output_tokens"] == 3
+    for name in ("methods.png", "upgrade.png"):
+        assert (tmp_path / "figures" / name).read_bytes().startswith(b"\x89PNG")
 
 
 def test_a_stopped_ollama_gives_a_clear_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -167,3 +174,17 @@ def test_a_stopped_ollama_gives_a_clear_error(capsys: pytest.CaptureFixture[str]
     runner = Runner(transport=httpx.MockTransport(down), max_attempts=1)
     assert main(["--quick"], runner=runner, pin=_no_pin) == 1
     assert "open -a Ollama" in capsys.readouterr().err
+
+
+def test_figures_draw_from_the_results_alone(tmp_path: Path) -> None:
+    rows = [
+        {"method": m, "false_alarms": f, "found": 1.0, "of": 2, "inject_rate": r}
+        for r in (0.3, 0.6)
+        for m, f in (("single run", 2.5), ("sequential + e-BH, stop cases that look fine", 0.0))
+    ]
+    results = {"null": rows[:2], "injected": rows}
+    assert plot_methods(results, tmp_path) == "methods.png"
+    verdicts = {"a": "REGRESSED", "b": "IMPROVED", "c": "INCONCLUSIVE"}
+    rates = {"a": 0.9, "b": 0.2, "c": 0.0}
+    assert plot_upgrade(rates, {"a": 0.4, "b": 0.8, "c": 0.0}, verdicts, tmp_path) == "upgrade.png"
+    assert (tmp_path / "upgrade.png").stat().st_size > 1000

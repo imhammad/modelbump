@@ -52,3 +52,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0044](0044-simulation-study-of-the-stats-engine.md) | Check the stats engine with a seeded simulation study and property tests, against a single-run diff and fixed-k baselines | Accepted |
 | [0045](0045-scores-and-stopping-cases-that-look-fine.md) | Accept scores between 0 and 1, and optionally stop test cases that look fine | Accepted |
 | [0046](0046-real-model-experiment.md) | Test the stats engine on real local models with computed answers, a null pair and injected regressions | Accepted |
+| [0047](0047-real-model-results.md) | Pick fixed k + BH or sequential + e-BH by budget, and report regressions per test case | Accepted |

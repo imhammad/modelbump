@@ -17,11 +17,12 @@ reshuffled `--shuffles` times (seeded) to get rates instead of one count.
 
 Answers come from Ollama on this machine, through the runner and its cache,
 so a stopped run picks up where it left off, and a second run costs nothing.
-Writes answers.jsonl, tasks.csv and results.json to research/data/stats_real/.
+Writes answers.jsonl, tasks.csv, results.json and two figures to
+research/data/stats_real/ (results: ADR 0047).
 
 Run from the repo root, with Ollama running and both models pulled:
-    uv run python -m research.stats_real.run --quick   # a few minutes
-    uv run python -m research.stats_real.run           # 9,000 answers, hours
+    uv run python -m research.stats_real.run --quick   # 360 answers, about 2 minutes
+    uv run python -m research.stats_real.run           # 9,000 answers, about 40 minutes
 """
 
 import argparse
@@ -52,6 +53,7 @@ from modelbump.stats import (
     regression_p_value,
     run_suite,
 )
+from research.stats_real.figures import plot_methods, plot_upgrade
 from research.stats_real.tasks import SYSTEM, Task, make_tasks, score
 
 DEFAULT_OUT = Path("research/data/stats_real")
@@ -149,6 +151,8 @@ def _row(task: Task, request: ChatRequest, result: ChatResult, value: float) -> 
         "sample": request.sample,
         "text": result.text,
         "score": value,
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
     }
 
 
@@ -283,7 +287,16 @@ def natural(old: Pools, new: Pools, settings: Settings) -> dict[str, Any]:
         "answers_per_model": {m: d.answers for m, d in decisions.items()},
         "sequential_verdicts": {v.value: sum(x is v for x in sequential.values()) for v in Verdict},
         "per_task": {n: v.value for n, v in sequential.items()},
+        "regressed": decisions["sequential + e-BH"].flagged,
     }
+
+
+def tokens_per_answer(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    """Mean prompt + reply tokens of one answer, per model."""
+    per_model: dict[str, list[int]] = {}
+    for row in rows:
+        per_model.setdefault(row["model"], []).append(row["input_tokens"] + row["output_tokens"])
+    return {model: mean(values) for model, values in per_model.items()}
 
 
 def family_rates(tasks: Sequence[Task], pool: Pools) -> dict[str, float]:
@@ -340,6 +353,17 @@ def summary(results: Mapping[str, Any]) -> list[str]:
         lines.append(f"  {method}: {count}, answers {nat['answers_per_model'][method]:,}")
     verdicts = ", ".join(f"{k} {v}" for k, v in nat["sequential_verdicts"].items())
     lines.append(f"  sequential + e-BH verdicts: {verdicts}")
+    lines.append(f"  REGRESSED under sequential + e-BH: {', '.join(nat['regressed']) or 'none'}")
+    tokens = results.get("tokens_per_answer")
+    if tokens:
+        both = tokens[OLD_MODEL] + tokens[NEW_MODEL]
+        lines.append(
+            "Tokens per answer (prompt + reply): "
+            + ", ".join(f"{model} {value:.1f}" for model, value in tokens.items())
+        )
+        lines.append("Tokens for the natural comparison, both models (from the mean per answer):")
+        for method, answers in nat["answers_per_model"].items():
+            lines.append(f"  {method}: {answers * both:,.0f}")
     return lines
 
 
@@ -370,6 +394,16 @@ def write_outputs(
                 ]
             )
     (out / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+    figures = out / "figures"
+    figures.mkdir(exist_ok=True)
+    plot_methods(results, figures)
+    # The upgrade was decided on Qwen 2.5's first answers, as many as Qwen 3 gave.
+    plot_upgrade(
+        {n: mean(s[: len(new_pool[n])]) for n, s in old_pool.items()},
+        {n: mean(s) for n, s in new_pool.items()},
+        results["natural"]["per_task"],
+        figures,
+    )
 
 
 def main(
@@ -401,10 +435,11 @@ def main(
     finally:
         cache.close()
     results = analyse(tasks, old_pool, new_pool, settings)
+    results["tokens_per_answer"] = tokens_per_answer(old_rows + new_rows)
     write_outputs(args.out, tasks, old_rows + new_rows, results, old_pool, new_pool)
     for line in summary(results):
         print(line)
-    print(f"Wrote {args.out}/answers.jsonl, tasks.csv and results.json")
+    print(f"Wrote {args.out}/answers.jsonl, tasks.csv, results.json and figures/")
     return 0
 
 

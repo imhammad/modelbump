@@ -9,7 +9,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/)
 
-> **Status:** `v0.1.0` ships the first stage, **Scan**, as a command-line tool and a GitHub Action. The other stages are still being built; see the [roadmap](#roadmap).
+> **Status:** `v0.3.0` ships the first stage, **Scan**, as a command-line tool and a GitHub Action, plus two building blocks for the next stages: a model runner (`modelbump ask`) and a statistics engine (`modelbump stats`) that tells a real regression from normal LLM randomness. The other stages are still being built; see the [roadmap](#roadmap).
 
 ## The problem
 
@@ -89,13 +89,27 @@ We ran the scanner on 100 real projects, each at the commit just before it moved
 
 Replayed on those 100 projects, the scanner flagged 96 before they migrated. The default is tuned not to miss anything; the two flags trade some misses for a much quieter report.
 
+## Is the new model worse, or is it just randomness?
+
+LLM answers change from run to run, so one run of each model proves little. Give the statistics engine how often each model passed a test case, and it says whether the difference is real:
+
+```console
+$ modelbump stats item 45/50 30/50
+Old model: 45/50 passed (90.0%)
+New model: 30/50 passed (60.0%)
+Difference (new - old): -30.0 points, 90% interval -43.8 to -14.5
+Verdict: REGRESSED (the new model is worse on this test case)
+```
+
+It also stops asking as soon as the answer is clear, and controls false alarms across a whole suite. On real answers from two local models (Qwen 2.5 against itself), a single-run diff flagged 2.6 of 60 unchanged test cases as worse on every run; the engine's suite methods flagged almost none ([results](https://imhammad.github.io/modelbump/research/stats-real/), [how it works](https://imhammad.github.io/modelbump/architecture/stats/)).
+
 ## The plan
 
 | Stage | What it does | Status |
 |-------|--------------|--------|
 | **Scan** | Static analysis finds every model ID in your code and config, checks it against a registry of provider retirement dates, and fails CI *before* the shutdown date. | Available (`v0.1.0`) |
 | **Test** | Builds an app-specific regression suite from your prompts, tests, and (optionally) logs. | Planned |
-| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Planned |
+| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Engine available (`v0.3.0`); runs on your app in a later version |
 | **Repair** | Searches for prompt edits that fix regressions without breaking anything that already worked. | Planned |
 | **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. | Planned |
 
@@ -116,8 +130,8 @@ uv run pytest
 - [x] **Phase 0:** Foundations: packaging, CI, pre-commit, branch protection
 - [x] **Phase 1:** Migration dataset + model retirement registry
 - [x] **Phase 2:** Scanner + GitHub Action (`v0.1.0`)
-- [ ] **Phase 3:** Model runner with caching and cost budgets
-- [ ] **Phase 4:** Statistical comparison engine
+- [x] **Phase 3:** Model runner with caching and cost budgets (`v0.2.0`)
+- [x] **Phase 4:** Statistical comparison engine (`v0.3.0`)
 - [ ] **Phase 5:** Regression suite synthesis + LLM-judge calibration
 - [ ] **Phase 6:** Prompt repair
 - [ ] **Phase 7:** End-to-end `modelbump bump` + `v1.0.0`

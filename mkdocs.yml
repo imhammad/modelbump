@@ -101,6 +101,7 @@ nav:
       - adr/0044-simulation-study-of-the-stats-engine.md
       - adr/0045-scores-and-stopping-cases-that-look-fine.md
       - adr/0046-real-model-experiment.md
+      - adr/0047-real-model-results.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
