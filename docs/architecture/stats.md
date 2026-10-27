@@ -2,7 +2,7 @@
 
 **Job:** decide, from repeated answers, whether the new model is worse than the old one, and control how often that decision is wrong.
 
-**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md)
+**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md)
 
 ```mermaid
 flowchart LR
@@ -95,8 +95,12 @@ suite = run_suite({"refund-policy": next_round_a, "json-schema": next_round_b}, 
 print(suite.named(Verdict.REGRESSED))
 ```
 
+## How well it works
+
+The [simulation study](../research/stats-sim.md) compares the engine with a single-run diff and fixed-k tests, from one command: `uv run python -m research.stats_sim.run`.
+
 ## Still to come in Phase 4
 
-- A simulation study that reproduces error rates, power and savings from one command.
+- Options to stop test cases that look fine and to raise the answer cap (the study found this wins back power on small drops).
 - Scores between 0 and 1, not only pass or fail.
 - The RQ2 experiment on local model pairs, such as `ollama/qwen2.5:7b` to `ollama/qwen3:8b`.

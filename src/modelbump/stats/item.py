@@ -185,3 +185,36 @@ def compare_scores(
 ) -> ItemComparison:
     """Compare two lists of pass (True) / fail (False) scores, one per answer."""
     return compare_counts(sum(old), len(old), sum(new), len(new), alpha=alpha, margin=margin)
+
+
+def regression_p_value(
+    old_passes: int,
+    old_runs: int,
+    new_passes: int,
+    new_runs: int,
+) -> float:
+    """Smallest alpha at which the interval lies wholly below 0 (1.0 if none below 0.5).
+
+    This is the p-value of the one-sided test "the new model is not worse",
+    for Benjamini-Hochberg on fixed-k results (ADR 0044).
+    """
+    _check_counts(old_passes, old_runs, "old model")
+    _check_counts(new_passes, new_runs, "new model")
+
+    def below_zero(alpha: float) -> bool:
+        return difference_interval(old_passes, old_runs, new_passes, new_runs, alpha).high < 0
+
+    high = 0.5 - 1e-12
+    if not below_zero(high):
+        return 1.0
+    low = 1e-12
+    if below_zero(low):
+        return low
+    # The upper bound shrinks as alpha grows, so bisect on alpha.
+    for _ in range(60):
+        middle = (low + high) / 2
+        if below_zero(middle):
+            high = middle
+        else:
+            low = middle
+    return high

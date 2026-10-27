@@ -98,6 +98,7 @@ nav:
       - adr/0041-item-verdict-from-pass-counts.md
       - adr/0042-sequential-stopping-by-betting.md
       - adr/0043-suite-control-with-e-bh.md
+      - adr/0044-simulation-study-of-the-stats-engine.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
@@ -123,3 +124,4 @@ nav:
       - research/paper.md
       - research/release.md
       - research/scanner-eval.md
+      - research/stats-sim.md

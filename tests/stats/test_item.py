@@ -156,3 +156,14 @@ def test_power_grows_with_runs() -> None:
     powers = [_chance_of(Verdict.REGRESSED, runs, 0.9, 0.6, 0.05) for runs in (10, 30, 50)]
     assert powers == sorted(powers)
     assert powers[-1] > 0.95
+
+
+def test_regression_p_value_is_small_for_a_clear_drop_and_one_without_a_drop() -> None:
+    from modelbump.stats import regression_p_value
+
+    p = regression_p_value(9, 10, 4, 10)
+    assert 0.01 < p < 0.05
+    assert compare_counts(9, 10, 4, 10, alpha=p * 1.01, margin=0.0).verdict is Verdict.REGRESSED
+    assert compare_counts(9, 10, 4, 10, alpha=p * 0.99, margin=0.0).verdict is Verdict.INCONCLUSIVE
+    assert regression_p_value(5, 10, 5, 10) == 1.0
+    assert regression_p_value(30, 30, 0, 30) == pytest.approx(0.0, abs=1e-9)

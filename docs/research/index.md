@@ -24,6 +24,7 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 - [Paper numbers, tables and figures](paper.md)
 - [Releasing the dataset](release.md)
 - [Scanner evaluation: precision and recall of `modelbump scan`](scanner-eval.md)
+- [Stats engine simulation study: error rates, power and cost](stats-sim.md)
 - [Dataset card](https://github.com/imhammad/modelbump/blob/main/research/data/README.md): what the migration dataset holds, how it was built, its quality and limits
 
 ## Key prior work
