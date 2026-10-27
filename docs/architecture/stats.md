@@ -2,7 +2,7 @@
 
 **Job:** decide, from repeated answers, whether the new model is worse than the old one, and control how often that decision is wrong.
 
-**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md), [ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md)
+**Code:** `src/modelbump/stats/` · **Commands:** `modelbump stats item OLD NEW`, `modelbump stats simulate OLD_RATE NEW_RATE`, `modelbump stats simulate-suite` · **Decisions:** [ADR 0041](../adr/0041-item-verdict-from-pass-counts.md), [ADR 0042](../adr/0042-sequential-stopping-by-betting.md), [ADR 0043](../adr/0043-suite-control-with-e-bh.md), [ADR 0044](../adr/0044-simulation-study-of-the-stats-engine.md), [ADR 0045](../adr/0045-scores-and-stopping-cases-that-look-fine.md), [ADR 0046](../adr/0046-real-model-experiment.md)
 
 ```mermaid
 flowchart LR
@@ -127,8 +127,8 @@ Without suite control: 7 false alarms
 
 ## How well it works
 
-The [simulation study](../research/stats-sim.md) compares the engine with a single-run diff and fixed-k tests, from one command: `uv run python -m research.stats_sim.run`.
+The [simulation study](../research/stats-sim.md) compares the engine with a single-run diff and fixed-k tests, from one command: `uv run python -m research.stats_sim.run`. The [real-model experiment](../research/stats-real.md) does the same on answers from Qwen 2.5 and Qwen 3, run locally with Ollama.
 
 ## Still to come in Phase 4
 
-- The RQ2 experiment on local model pairs, such as `ollama/qwen2.5:7b` to `ollama/qwen3:8b`.
+- The real-model results, then release v0.3.0.
