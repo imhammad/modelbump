@@ -457,3 +457,25 @@ def test_stats_item_rejects_impossible_counts() -> None:
     result = runner.invoke(app, ["stats", "item", "11/10", "4/10"])
     assert result.exit_code == 2
     assert "between 0 and 10" in result.stderr
+
+
+def test_stats_simulate_stops_early_on_a_clear_drop() -> None:
+    result = runner.invoke(app, ["stats", "simulate", "0.9", "0.6", "--seed", "1"])
+    assert result.exit_code == 0
+    assert "old model passes 90%, new model 60% (seed 1)" in result.stdout
+    assert "Stopped early after 61 answers per model (old 55/61, new 41/61)" in result.stdout
+    assert "Verdict: REGRESSED" in result.stdout
+    assert "a claim is proven at 20" in result.stdout
+
+
+def test_stats_simulate_reports_hitting_max_runs() -> None:
+    result = runner.invoke(app, ["stats", "simulate", "0.9", "0.9", "--max-runs", "30"])
+    assert result.exit_code == 0
+    assert "Reached --max-runs after 30 answers per model" in result.stdout
+    assert "Verdict: INCONCLUSIVE" in result.stdout
+
+
+def test_stats_simulate_rejects_a_rate_above_one() -> None:
+    result = runner.invoke(app, ["stats", "simulate", "1.2", "0.5"])
+    assert result.exit_code == 2
+    assert "between 0 and 1" in result.stderr

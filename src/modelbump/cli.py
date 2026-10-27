@@ -1,6 +1,7 @@
 """Command-line interface for ModelBump."""
 
 import asyncio
+import random
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -29,7 +30,14 @@ from modelbump.scanner.report import (
     failure_line,
     summary_line,
 )
-from modelbump.stats import DEFAULT_ALPHA, DEFAULT_MARGIN, Verdict, compare_counts
+from modelbump.stats import (
+    DEFAULT_ALPHA,
+    DEFAULT_MARGIN,
+    DEFAULT_MAX_RUNS,
+    Verdict,
+    compare_counts,
+    run_sequential,
+)
 
 app = typer.Typer(
     name="modelbump",
@@ -395,3 +403,61 @@ def stats_item(
         f"to {result.interval.high * 100:+.1f}"
     )
     typer.echo(f"Verdict: {result.verdict} ({_VERDICT_MEANING[result.verdict]})")
+
+
+def _check_rate(rate: float, which: str) -> float:
+    if not 0 <= rate <= 1:
+        raise typer.BadParameter(f"{which} must be between 0 and 1, got {rate}")
+    return rate
+
+
+@stats_app.command("simulate")
+def stats_simulate(
+    old_rate: Annotated[
+        float, typer.Argument(metavar="OLD_RATE", help="Old model's true pass rate, e.g. 0.9.")
+    ],
+    new_rate: Annotated[
+        float, typer.Argument(metavar="NEW_RATE", help="New model's true pass rate, e.g. 0.6.")
+    ],
+    seed: Annotated[int, typer.Option(help="Random seed, so a run can be repeated.")] = 1,
+    max_runs: Annotated[
+        int, typer.Option(help="Stop with INCONCLUSIVE after this many answers per model.")
+    ] = DEFAULT_MAX_RUNS,
+    margin: Annotated[
+        float,
+        typer.Option(
+            help="Largest change in pass rate that still counts as the same (0.1 = 10 points)."
+        ),
+    ] = DEFAULT_MARGIN,
+    alpha: Annotated[
+        float, typer.Option(help="Chance of a wrong REGRESSED, IMPROVED or EQUIVALENT claim.")
+    ] = DEFAULT_ALPHA,
+) -> None:
+    """Pretend two models answer one test case, and stop as soon as the verdict is clear."""
+    _check_rate(old_rate, "OLD_RATE")
+    _check_rate(new_rate, "NEW_RATE")
+    rng = random.Random(seed)
+
+    def next_round() -> tuple[bool, bool]:
+        return rng.random() < old_rate, rng.random() < new_rate
+
+    try:
+        result = run_sequential(next_round, alpha=alpha, margin=margin, max_runs=max_runs)
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(
+        f"Simulated test case: old model passes {old_rate:.0%}, new model {new_rate:.0%} "
+        f"(seed {seed})"
+    )
+    how = "Stopped early" if result.stopped_early else "Reached --max-runs"
+    typer.echo(
+        f"{how} after {result.runs} answers per model "
+        f"(old {result.old_passes}/{result.runs}, new {result.new_passes}/{result.runs})"
+    )
+    typer.echo(f"Verdict: {result.verdict} ({_VERDICT_MEANING[result.verdict]})")
+    evidence = result.evidence
+    typer.echo(
+        f"Evidence (a claim is proven at {1 / alpha:g}): regressed {evidence.regressed:.1f}, "
+        f"improved {evidence.improved:.1f}, equivalent {evidence.equivalent:.1f}"
+    )
