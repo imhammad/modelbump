@@ -182,3 +182,16 @@ def test_run_many_keeps_order_and_limits_concurrency() -> None:
 def test_bad_settings_are_rejected(option: dict[str, int]) -> None:
     with pytest.raises(ValueError):
         Runner(**option)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("content", "text"),
+    [
+        ("<think>\nLet me think.\nOK.\n</think>\n\nParis.", "Paris."),
+        ("  <think></think>Paris.", "Paris."),
+        ("Paris. <think>not at the start</think>", "Paris. <think>not at the start</think>"),
+    ],
+)
+def test_reasoning_at_the_start_of_an_answer_is_removed(content: str, text: str) -> None:
+    runner, _ = make_runner(FakeServer(ok(content)))
+    assert asyncio.run(runner.run(REQUEST)).text == text

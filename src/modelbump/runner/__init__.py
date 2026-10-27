@@ -3,6 +3,7 @@
 from modelbump.runner.backends import ENDPOINTS, Endpoint, resolve_model
 from modelbump.runner.budget import Budget, BudgetExceeded, Spend
 from modelbump.runner.cache import CacheStats, ResponseCache, cache_key, default_cache_path
+from modelbump.runner.ollama import LocalModel, find_model, list_local_models, pin_versions
 from modelbump.runner.run import Runner
 from modelbump.runner.types import ChatRequest, ChatResult, Message, RunnerError
 
@@ -14,6 +15,7 @@ __all__ = [
     "ChatRequest",
     "ChatResult",
     "Endpoint",
+    "LocalModel",
     "Message",
     "ResponseCache",
     "Runner",
@@ -21,5 +23,8 @@ __all__ = [
     "Spend",
     "cache_key",
     "default_cache_path",
+    "find_model",
+    "list_local_models",
+    "pin_versions",
     "resolve_model",
 ]

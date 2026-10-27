@@ -17,6 +17,8 @@ from modelbump.runner import (
     ResponseCache,
     Runner,
     RunnerError,
+    list_local_models,
+    pin_versions,
 )
 from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
 from modelbump.scanner.report import (
@@ -198,6 +200,13 @@ def ask(
         int | None,
         typer.Option(min=1, help="Stop after this many requests to the model, retries included."),
     ] = None,
+    think: Annotated[
+        str | None,
+        typer.Option(
+            help="Reasoning effort for thinking models: none, low, medium or high. "
+            "Leave it out for the model's default."
+        ),
+    ] = None,
 ) -> None:
     """Send prompts to a model and print the answers (to try the runner)."""
     requests = [
@@ -209,9 +218,15 @@ def ask(
             max_tokens=max_tokens,
             seed=seed,
             sample=sample,
+            reasoning_effort=think,
         )
         for prompt in prompts
     ]
+    try:
+        requests = pin_versions(requests)
+    except RunnerError as error:
+        _print_error(error, model)
+        raise typer.Exit(code=1) from error
     cache = ResponseCache() if use_cache else None
     budget = Budget(max_tokens=budget_tokens, max_requests=budget_requests)
     runner = Runner(timeout=timeout, max_attempts=attempts, cache=cache, budget=budget)
@@ -229,9 +244,7 @@ def ask(
             typer.echo(f"## {prompt}")
         if isinstance(outcome, RunnerError):
             failed = True
-            typer.echo(f"Error: {outcome}", err=True)
-            if model.startswith("ollama/") and "could not reach" in str(outcome):
-                typer.echo("Is Ollama running? Start it with: open -a Ollama", err=True)
+            _print_error(outcome, model)
             continue
         typer.echo(outcome.text)
         typer.echo(_result_line(outcome), err=True)
@@ -244,6 +257,33 @@ def ask(
         )
     if failed:
         raise typer.Exit(code=1)
+
+
+def _print_error(error: RunnerError, model: str) -> None:
+    typer.echo(f"Error: {error}", err=True)
+    if model.startswith("ollama/") and "could not reach" in str(error):
+        typer.echo("Is Ollama running? Start it with: open -a Ollama", err=True)
+
+
+@app.command()
+def models() -> None:
+    """List the models pulled into Ollama, with the digest that pins each one."""
+    try:
+        found = list_local_models()
+    except RunnerError as error:
+        _print_error(error, "ollama/")
+        raise typer.Exit(code=1) from error
+    if not found:
+        typer.echo("No models yet. Pull one with: ollama pull qwen2.5:7b")
+        return
+    width = max(len(m.name) for m in found)
+    typer.echo(f"{'MODEL':<{width + 7}}  PARAMS  QUANT    SIZE     DIGEST")
+    for m in found:
+        size = f"{m.size_bytes / 1e9:.1f} GB"
+        typer.echo(
+            f"{'ollama/' + m.name:<{width + 7}}  {m.parameter_size:<6}  {m.quantization:<7}  "
+            f"{size:<7}  {m.digest[:12]}"
+        )
 
 
 def _result_line(result: ChatResult) -> str:

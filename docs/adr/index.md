@@ -44,3 +44,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0036](0036-runner-speaks-openai-compatible-http.md) | The runner calls OpenAI-compatible endpoints with httpx, not LiteLLM, and uses only free models | Accepted |
 | [0037](0037-response-cache-in-sqlite.md) | Cache model answers in one SQLite file, keyed by a hash of the whole request | Accepted |
 | [0038](0038-budget-in-tokens-and-requests.md) | Limit spending in tokens and requests, not dollars, and count cached answers as savings | Accepted |
+| [0039](0039-pin-local-models-to-their-digest.md) | Pin local models to their Ollama digest, and let callers turn thinking off | Accepted |

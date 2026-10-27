@@ -47,3 +47,11 @@ def test_endpoint_reads_its_key_from_the_environment(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("FREE_KEY", "abc")
     assert endpoint.headers() == {"Authorization": "Bearer abc"}
     assert Endpoint("local", "http://localhost/v1").headers() == {}
+
+
+def test_request_body_sends_reasoning_effort_but_not_cache_only_fields() -> None:
+    request = ChatRequest.ask("ollama/m", "hi", reasoning_effort="none", sample=3)
+    body = request_body(request, "m")
+    assert body["reasoning_effort"] == "none"
+    assert "sample" not in body
+    assert "model_version" not in body

@@ -12,6 +12,12 @@ from modelbump.cli import app
 runner = CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _no_ollama_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`ask` pins Ollama models to their digest; tests have no Ollama to ask."""
+    monkeypatch.setattr("modelbump.cli.pin_versions", lambda requests: list(requests))
+
+
 def test_version_flag_prints_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -342,3 +348,62 @@ def test_ask_several_prompts_with_a_budget(monkeypatch: pytest.MonkeyPatch) -> N
     assert rerun.stdout.endswith("## c\nC\n")
     assert "Spent: 1 requests, 15 tokens" in rerun.stderr
     assert "From cache: 2 answers (30 tokens saved)." in rerun.stderr
+
+
+def test_ask_stops_before_sending_when_a_model_is_not_pulled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from modelbump.runner import RunnerError
+
+    def not_pulled(requests: list[object]) -> list[object]:
+        raise RunnerError("ollama/qwen3:8b: this model is not pulled. Run: ollama pull qwen3:8b")
+
+    monkeypatch.setattr("modelbump.cli.pin_versions", not_pulled)
+    result = runner.invoke(app, ["ask", "hi", "-m", "ollama/qwen3:8b", "--think", "none"])
+    assert result.exit_code == 1
+    assert "Run: ollama pull qwen3:8b" in result.stderr
+
+
+def test_ask_hints_when_ollama_is_down_at_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import RunnerError
+
+    def down(requests: list[object]) -> list[object]:
+        raise RunnerError("could not reach http://localhost:11434 (ConnectError)")
+
+    monkeypatch.setattr("modelbump.cli.pin_versions", down)
+    result = runner.invoke(app, ["ask", "hi"])
+    assert result.exit_code == 1
+    assert "open -a Ollama" in result.stderr
+
+
+def test_models_lists_what_ollama_has(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import LocalModel
+
+    found = [
+        LocalModel(
+            "qwen2.5:7b", "845dbda0ea48" + "1" * 52, 4_683_087_332, "qwen2", "7.6B", "Q4_K_M"
+        ),
+        LocalModel("qwen3:8b", "500a1f067a9f" + "0" * 52, 5_225_388_164, "qwen3", "8.2B", "Q4_K_M"),
+    ]
+    monkeypatch.setattr("modelbump.cli.list_local_models", lambda: found)
+    result = runner.invoke(app, ["models"])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[0].split() == ["MODEL", "PARAMS", "QUANT", "SIZE", "DIGEST"]
+    assert lines[1].split() == ["ollama/qwen2.5:7b", "7.6B", "Q4_K_M", "4.7", "GB", "845dbda0ea48"]
+    assert lines[2].split()[0] == "ollama/qwen3:8b"
+
+
+def test_models_when_none_are_pulled_or_ollama_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import RunnerError
+
+    monkeypatch.setattr("modelbump.cli.list_local_models", lambda: [])
+    assert "ollama pull qwen2.5:7b" in runner.invoke(app, ["models"]).stdout
+
+    def down() -> list[object]:
+        raise RunnerError("could not reach http://localhost:11434 (ConnectError)")
+
+    monkeypatch.setattr("modelbump.cli.list_local_models", down)
+    result = runner.invoke(app, ["models"])
+    assert result.exit_code == 1
+    assert "open -a Ollama" in result.stderr

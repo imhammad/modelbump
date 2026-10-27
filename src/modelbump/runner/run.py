@@ -2,6 +2,7 @@
 
 import asyncio
 import random
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
@@ -17,6 +18,9 @@ from modelbump.runner.types import ChatRequest, ChatResult, RunnerError
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 Sleep = Callable[[float], Awaitable[None]]
+
+# Some thinking models put their reasoning at the start of the answer.
+_THINK = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL)
 
 
 class Runner:
@@ -150,7 +154,7 @@ class Runner:
 def _parse(data: dict[str, Any], model: str, attempts: int, seconds: float) -> ChatResult:
     try:
         choice = data["choices"][0]
-        text = choice["message"]["content"] or ""
+        text = _THINK.sub("", choice["message"]["content"] or "", count=1)
     except (KeyError, IndexError, TypeError) as error:
         raise RunnerError(f"{model}: unexpected response shape: {data!r:.200}") from error
     usage = data.get("usage") or {}

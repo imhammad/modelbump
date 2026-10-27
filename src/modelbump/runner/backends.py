@@ -66,4 +66,6 @@ def request_body(request: ChatRequest, model_name: str) -> dict[str, Any]:
         body["max_tokens"] = request.max_tokens
     if request.seed is not None:
         body["seed"] = request.seed
+    if request.reasoning_effort is not None:
+        body["reasoning_effort"] = request.reasoning_effort
     return body

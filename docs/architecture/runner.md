@@ -2,7 +2,7 @@
 
 **Job:** send prompts to models and get answers back, reliably and for free.
 
-**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md), [ADR 0038](../adr/0038-budget-in-tokens-and-requests.md)
+**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md), [ADR 0038](../adr/0038-budget-in-tokens-and-requests.md), [ADR 0039](../adr/0039-pin-local-models-to-their-digest.md)
 
 ```mermaid
 flowchart LR
@@ -32,6 +32,27 @@ The wait before attempt *n* + 1 is a random time between 0 and min(30 s, 1 s × 
 | `ollama` | `http://localhost:11434/v1` (or `MODELBUMP_OLLAMA_URL`) | none |
 
 Free API tiers come in a later step. ModelBump never needs a paid key.
+
+## Local models
+
+`modelbump models` lists what Ollama has pulled. Before sending, `modelbump ask` pins each `ollama/...` request to the model's digest (`model_version`), so a re-pulled model with new weights gets new cache entries, and a model that is not pulled stops with `Run: ollama pull NAME`.
+
+```console
+$ modelbump models
+MODEL              PARAMS  QUANT    SIZE     DIGEST
+ollama/qwen2.5:7b  7.6B    Q4_K_M   4.7 GB   845dbda0ea48
+ollama/qwen3:8b    8.2B    Q4_K_M   5.2 GB   500a1f067a9f
+```
+
+Thinking models (Qwen 3 and newer) reason before answering. `--think none` turns that off, `low`/`medium`/`high` set how much, and leaving it out keeps the model's default. A `<think>` block at the start of an answer is removed from the text.
+
+Candidate old → new pairs that fit a 16 GB laptop (one model is loaded at a time); the pairs used in the experiments are fixed later:
+
+| Family | Old | New |
+|--------|-----|-----|
+| Qwen | `qwen2.5:7b` | `qwen3:8b` |
+| Llama | `llama3:8b` | `llama3.1:8b` |
+| Gemma | `gemma2:9b` | `gemma3:12b` |
 
 ## Cache
 
@@ -70,4 +91,3 @@ The limit is checked before each request. Requests already in flight finish, so 
 ## Coming next
 
 - Free API tier endpoints, after checking their current limits.
-- Old and new local model pairs for the experiments.

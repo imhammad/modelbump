@@ -1,6 +1,7 @@
 """Tests for the response cache."""
 
 import asyncio
+import dataclasses
 import random
 from pathlib import Path
 
@@ -77,6 +78,10 @@ def test_the_key_is_stable_and_covers_everything_that_changes_an_answer() -> Non
         ChatRequest.ask("ollama/qwen2.5:7b", "Name a fruit.", "Be brief.", seed=1, temperature=0.7),
         ChatRequest.ask("ollama/qwen2.5:7b", "Name a fruit.", "Be brief.", seed=1, max_tokens=5),
         ChatRequest.ask("ollama/qwen2.5:7b", "Name a fruit.", "Be brief.", seed=1, sample=1),
+        ChatRequest.ask(
+            "ollama/qwen2.5:7b", "Name a fruit.", "Be brief.", seed=1, reasoning_effort="none"
+        ),
+        dataclasses.replace(BASE, model_version="845dbda0ea48"),
         # Same text, different roles.
         ChatRequest(
             "ollama/qwen2.5:7b",

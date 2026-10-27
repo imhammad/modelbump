@@ -17,7 +17,8 @@ from pathlib import Path
 from modelbump.runner.types import ChatRequest, ChatResult
 
 # Bump this when the key recipe changes, so old entries are never misread.
-KEY_VERSION = 1
+# 2: adds reasoning_effort and model_version (ADR 0039).
+KEY_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS responses (
@@ -51,6 +52,8 @@ def cache_key(request: ChatRequest) -> str:
         "max_tokens": request.max_tokens,
         "seed": request.seed,
         "sample": request.sample,
+        "reasoning_effort": request.reasoning_effort,
+        "model_version": request.model_version,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
