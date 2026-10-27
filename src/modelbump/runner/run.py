@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from modelbump.runner.backends import request_body, resolve_model
+from modelbump.runner.backends import Endpoint, request_body, resolve_model
 from modelbump.runner.budget import Budget
 from modelbump.runner.cache import ResponseCache
 from modelbump.runner.types import ChatRequest, ChatResult, RunnerError
@@ -18,6 +18,7 @@ from modelbump.runner.types import ChatRequest, ChatResult, RunnerError
 RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 Sleep = Callable[[float], Awaitable[None]]
+Clock = Callable[[], float]
 
 # Some thinking models put their reasoning at the start of the answer.
 _THINK = re.compile(r"^\s*<think>.*?</think>\s*", re.DOTALL)
@@ -35,6 +36,9 @@ class Runner:
       successful call (ADR 0037). None means every request calls the model.
     - `budget`: counts tokens and requests, and stops sending requests once
       a limit is reached (ADR 0038). None means no limit.
+
+    Requests to an endpoint with an `rpm` are spaced at least 60/rpm seconds
+    apart, retries included (ADR 0040).
     """
 
     def __init__(
@@ -49,6 +53,7 @@ class Runner:
         budget: Budget | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Sleep = asyncio.sleep,
+        clock: Clock = time.monotonic,
         rng: random.Random | None = None,
     ) -> None:
         if max_attempts < 1:
@@ -64,6 +69,8 @@ class Runner:
         self.budget = budget
         self._transport = transport
         self._sleep = sleep
+        self._clock = clock
+        self._next_slot: dict[str, float] = {}
         self._rng = rng or random.Random()
 
     async def run(self, request: ChatRequest) -> ChatResult:
@@ -124,6 +131,7 @@ class Runner:
             wait: float | None = None
             if self.budget is not None:
                 self.budget.before_request()
+            await self._pace(endpoint)
             try:
                 response = await client.post(url, json=body, headers=headers)
             except httpx.TimeoutException:
@@ -141,6 +149,17 @@ class Runner:
                 raise RunnerError(f"{request.model}: {reason} (gave up after {attempt} attempts)")
             await self._sleep(self._backoff(attempt, wait))
         raise AssertionError("unreachable")  # pragma: no cover
+
+    async def _pace(self, endpoint: Endpoint) -> None:
+        """Wait for this endpoint's next free slot, so requests stay under its rpm."""
+        if endpoint.rpm is None:
+            return
+        now = self._clock()
+        slot = max(now, self._next_slot.get(endpoint.name, now))
+        # Book the slot before waiting, so concurrent requests queue up behind it.
+        self._next_slot[endpoint.name] = slot + 60.0 / endpoint.rpm
+        if slot > now:
+            await self._sleep(slot - now)
 
     def _backoff(self, attempt: int, retry_after: float | None) -> float:
         """Full jitter: a random wait up to base * 2^(attempt-1), capped at max_delay."""

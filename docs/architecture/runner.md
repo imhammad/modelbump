@@ -2,7 +2,7 @@
 
 **Job:** send prompts to models and get answers back, reliably and for free.
 
-**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md), [ADR 0038](../adr/0038-budget-in-tokens-and-requests.md), [ADR 0039](../adr/0039-pin-local-models-to-their-digest.md)
+**Code:** `src/modelbump/runner/` · **Command:** `modelbump ask PROMPT --model ollama/qwen2.5:7b` · **Decisions:** [ADR 0036](../adr/0036-runner-speaks-openai-compatible-http.md), [ADR 0037](../adr/0037-response-cache-in-sqlite.md), [ADR 0038](../adr/0038-budget-in-tokens-and-requests.md), [ADR 0039](../adr/0039-pin-local-models-to-their-digest.md), [ADR 0040](../adr/0040-free-cloud-tiers-with-pacing.md)
 
 ```mermaid
 flowchart LR
@@ -27,11 +27,16 @@ The wait before attempt *n* + 1 is a random time between 0 and min(30 s, 1 s × 
 
 ## Endpoints
 
-| Endpoint | URL | Key |
-|----------|-----|-----|
-| `ollama` | `http://localhost:11434/v1` (or `MODELBUMP_OLLAMA_URL`) | none |
+Only free endpoints exist. ModelBump never needs a paid key.
 
-Free API tiers come in a later step. ModelBump never needs a paid key.
+| Endpoint | Example model | URL | Key | Paced at | Where the prompt goes |
+|----------|---------------|-----|-----|----------|-----------------------|
+| `ollama` | `ollama/qwen2.5:7b` | `http://localhost:11434/v1` (or `MODELBUMP_OLLAMA_URL`) | none | not paced | stays on this machine |
+| `groq` | `groq/llama-3.1-8b-instant` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | 30 / min | Groq's cloud |
+| `gemini` | `gemini/gemini-3.8-flash` | `https://generativelanguage.googleapis.com/v1beta/openai` | `GEMINI_API_KEY` | 10 / min | Google's cloud; free-tier prompts may be read by reviewers |
+| `openrouter` | `openrouter/PUBLISHER/MODEL:free` (see openrouter.ai/models) | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | 20 / min | third-party providers |
+
+Requests to a paced endpoint are spaced at least 60/rpm seconds apart, retries included, so the free per-minute limit is never hit. Daily limits are set with the budget (`--budget-requests`). Before using a cloud endpoint, `modelbump ask` prints a reminder never to send private data. Free limits change often; the values were checked on 2026-10-27 ([ADR 0040](../adr/0040-free-cloud-tiers-with-pacing.md)).
 
 ## Local models
 
@@ -88,6 +93,6 @@ Running the same command again costs one request: the first two answers come fro
 
 The limit is checked before each request. Requests already in flight finish, so the token total can end slightly above the limit, by at most what those answers use.
 
-## Coming next
+## Status
 
-- Free API tier endpoints, after checking their current limits.
+Phase 3 is complete: retries and timeouts, the cache, the budget, local models and free cloud tiers. The statistics engine (Phase 4) builds on `Runner.run_many` and the `sample` number.

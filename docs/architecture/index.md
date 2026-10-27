@@ -21,7 +21,7 @@ flowchart LR
 | [Registry](registry.md) | Which model IDs are retired, and when | v1 (Phase 1) |
 | [Scanner](scanner.md) | Find model IDs in code and config; match them against retirement dates | v0.1.0 (Phase 2) |
 | Suite synthesizer | Build regression test cases and oracles from the target repo | Planned (Phase 5) |
-| [Runner](runner.md) | Call models with caching, retries and a cost budget | In progress (Phase 3) |
+| [Runner](runner.md) | Call models with caching, retries and a cost budget | Done (Phase 3) |
 | Stats engine | Decide REGRESSED / EQUIVALENT / INCONCLUSIVE per test case | Planned (Phase 4) |
 | Prompt repair | Find prompt edits that fix regressions safely | Planned (Phase 6) |
 | Reporter / GitHub | Produce reports and open the upgrade PR | Planned (Phase 7) |

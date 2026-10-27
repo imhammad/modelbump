@@ -195,3 +195,55 @@ def test_bad_settings_are_rejected(option: dict[str, int]) -> None:
 def test_reasoning_at_the_start_of_an_answer_is_removed(content: str, text: str) -> None:
     runner, _ = make_runner(FakeServer(ok(content)))
     assert asyncio.run(runner.run(REQUEST)).text == text
+
+
+def test_requests_to_a_paced_endpoint_are_spaced_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import ENDPOINTS, Endpoint
+
+    monkeypatch.setitem(ENDPOINTS, "slow", Endpoint("slow", "https://slow.test/v1", rpm=30))
+    now = [100.0]
+    waits: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    server = FakeServer(ok(), httpx.Response(503, text="busy"), ok(), ok())
+    runner = Runner(
+        transport=httpx.MockTransport(server),
+        sleep=fake_sleep,
+        clock=lambda: now[0],
+        rng=random.Random(0),
+        concurrency=3,
+    )
+    requests = [ChatRequest.ask("slow/m", f"q{i}") for i in range(3)]
+    asyncio.run(runner.run_many(requests))
+    assert len(server.requests) == 4
+    # 30 rpm = one request every 2 s: the 4 requests (one retry) span at least 6 s.
+    assert now[0] - 100.0 >= 6.0
+    assert all(w > 0 for w in waits)
+
+
+def test_local_endpoints_are_not_paced() -> None:
+    server = FakeServer(ok(), ok(), ok())
+    runner, waits = make_runner(server)
+    asyncio.run(runner.run_many([ChatRequest.ask("ollama/m", f"q{i}") for i in range(3)]))
+    assert waits == []
+
+
+def test_a_missing_key_is_a_runner_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    runner, _ = make_runner(FakeServer())
+    outcomes = asyncio.run(runner.run_each([ChatRequest.ask("groq/llama-3.1-8b-instant", "hi")]))
+    assert isinstance(outcomes[0], RunnerError)
+    assert "Set GROQ_API_KEY" in str(outcomes[0])
+
+
+def test_cloud_requests_carry_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    server = FakeServer(ok())
+    runner, _ = make_runner(server)
+    asyncio.run(runner.run(ChatRequest.ask("groq/llama-3.1-8b-instant", "hi")))
+    sent = server.requests[0]
+    assert str(sent.url) == "https://api.groq.com/openai/v1/chat/completions"
+    assert sent.headers["authorization"] == "Bearer gsk_test"

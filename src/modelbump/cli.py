@@ -19,6 +19,7 @@ from modelbump.runner import (
     RunnerError,
     list_local_models,
     pin_versions,
+    resolve_model,
 )
 from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
 from modelbump.scanner.report import (
@@ -223,18 +224,25 @@ def ask(
         for prompt in prompts
     ]
     try:
+        endpoint, _ = resolve_model(model)
         requests = pin_versions(requests)
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from error
     except RunnerError as error:
         _print_error(error, model)
         raise typer.Exit(code=1) from error
+    if not endpoint.local:
+        typer.echo(
+            f"Note: {endpoint.name} is a free cloud tier. Your prompts leave this machine "
+            "and may be kept or read by the provider. Never send private data.",
+            err=True,
+        )
     cache = ResponseCache() if use_cache else None
     budget = Budget(max_tokens=budget_tokens, max_requests=budget_requests)
     runner = Runner(timeout=timeout, max_attempts=attempts, cache=cache, budget=budget)
     try:
         outcomes = asyncio.run(runner.run_each(requests))
-    except ValueError as error:
-        typer.echo(f"Error: {error}", err=True)
-        raise typer.Exit(code=1) from error
     finally:
         if cache is not None:
             cache.close()

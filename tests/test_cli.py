@@ -407,3 +407,24 @@ def test_models_when_none_are_pulled_or_ollama_is_down(monkeypatch: pytest.Monke
     result = runner.invoke(app, ["models"])
     assert result.exit_code == 1
     assert "open -a Ollama" in result.stderr
+
+
+def test_ask_warns_before_using_a_cloud_tier(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modelbump.runner import ChatResult, Runner
+
+    async def fake_run_each(self: Runner, requests: list[object]) -> list[ChatResult]:
+        return [ChatResult("Canberra", "groq/llama-3.1-8b-instant", 20, 2, "stop", 1, 0.3)]
+
+    monkeypatch.setattr(Runner, "run_each", fake_run_each)
+    cloud = runner.invoke(app, ["ask", "Capital of Australia?", "-m", "groq/llama-3.1-8b-instant"])
+    assert cloud.exit_code == 0
+    assert "groq is a free cloud tier" in cloud.stderr
+    assert "Never send private data." in cloud.stderr
+    local = runner.invoke(app, ["ask", "Capital of Australia?"])
+    assert "cloud tier" not in local.stderr
+
+
+def test_ask_rejects_an_unknown_endpoint() -> None:
+    result = runner.invoke(app, ["ask", "hi", "-m", "paid/gpt-9"])
+    assert result.exit_code == 1
+    assert "Unknown endpoint 'paid'" in result.stderr
