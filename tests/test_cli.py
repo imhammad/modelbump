@@ -428,3 +428,32 @@ def test_ask_rejects_an_unknown_endpoint() -> None:
     result = runner.invoke(app, ["ask", "hi", "-m", "paid/gpt-9"])
     assert result.exit_code == 1
     assert "Unknown endpoint 'paid'" in result.stderr
+
+
+def test_stats_item_says_regressed_for_a_clear_drop() -> None:
+    result = runner.invoke(app, ["stats", "item", "9/10", "4/10"])
+    assert result.exit_code == 0
+    assert "Old model: 9/10 passed (90.0%)" in result.stdout
+    assert "Difference (new - old): -50.0 points, 90% interval -75.8 to -7.9" in result.stdout
+    assert "Verdict: REGRESSED" in result.stdout
+
+
+def test_stats_item_takes_margin_and_alpha() -> None:
+    result = runner.invoke(
+        app, ["stats", "item", "900/1000", "850/1000", "--margin", "0", "--alpha", "0.01"]
+    )
+    assert result.exit_code == 0
+    assert "98% interval" in result.stdout
+    assert "Verdict: REGRESSED" in result.stdout
+
+
+def test_stats_item_rejects_badly_written_counts() -> None:
+    result = runner.invoke(app, ["stats", "item", "9", "4/10"])
+    assert result.exit_code == 2
+    assert "PASSES/RUNS" in result.stderr
+
+
+def test_stats_item_rejects_impossible_counts() -> None:
+    result = runner.invoke(app, ["stats", "item", "11/10", "4/10"])
+    assert result.exit_code == 2
+    assert "between 0 and 10" in result.stderr

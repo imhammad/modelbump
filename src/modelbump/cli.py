@@ -29,6 +29,7 @@ from modelbump.scanner.report import (
     failure_line,
     summary_line,
 )
+from modelbump.stats import DEFAULT_ALPHA, DEFAULT_MARGIN, Verdict, compare_counts
 
 app = typer.Typer(
     name="modelbump",
@@ -336,3 +337,61 @@ def cache_clear(
     finally:
         cache.close()
     typer.echo(f"Deleted {deleted} stored answers.")
+
+
+stats_app = typer.Typer(
+    help="Decide whether a new model is worse than the old one.", no_args_is_help=True
+)
+app.add_typer(stats_app, name="stats")
+
+_VERDICT_MEANING = {
+    Verdict.REGRESSED: "the new model is worse on this test case",
+    Verdict.IMPROVED: "the new model is better on this test case",
+    Verdict.EQUIVALENT: "the two models differ by less than the margin",
+    Verdict.INCONCLUSIVE: "not enough answers to tell; run more samples",
+}
+
+
+def _parse_count(text: str, which: str) -> tuple[int, int]:
+    passes, slash, runs = text.partition("/")
+    if not slash or not passes.strip().isdigit() or not runs.strip().isdigit():
+        raise typer.BadParameter(f"write {which} as PASSES/RUNS, for example 9/10; got {text!r}")
+    return int(passes), int(runs)
+
+
+@stats_app.command("item")
+def stats_item(
+    old: Annotated[
+        str, typer.Argument(metavar="OLD", help="Old model's passes/runs, for example 9/10.")
+    ],
+    new: Annotated[
+        str, typer.Argument(metavar="NEW", help="New model's passes/runs, for example 4/10.")
+    ],
+    margin: Annotated[
+        float,
+        typer.Option(
+            help="Largest change in pass rate that still counts as the same (0.1 = 10 points)."
+        ),
+    ] = DEFAULT_MARGIN,
+    alpha: Annotated[
+        float, typer.Option(help="Chance of a wrong REGRESSED, IMPROVED or EQUIVALENT claim.")
+    ] = DEFAULT_ALPHA,
+) -> None:
+    """Compare pass counts of the old and new model on one test case."""
+    old_passes, old_runs = _parse_count(old, "OLD")
+    new_passes, new_runs = _parse_count(new, "NEW")
+    try:
+        result = compare_counts(
+            old_passes, old_runs, new_passes, new_runs, alpha=alpha, margin=margin
+        )
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(f"Old model: {old_passes}/{old_runs} passed ({result.old_rate:.1%})")
+    typer.echo(f"New model: {new_passes}/{new_runs} passed ({result.new_rate:.1%})")
+    typer.echo(
+        f"Difference (new - old): {result.difference * 100:+.1f} points, "
+        f"{result.confidence:.0%} interval {result.interval.low * 100:+.1f} "
+        f"to {result.interval.high * 100:+.1f}"
+    )
+    typer.echo(f"Verdict: {result.verdict} ({_VERDICT_MEANING[result.verdict]})")
