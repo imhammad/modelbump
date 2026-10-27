@@ -48,3 +48,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0040](0040-free-cloud-tiers-with-pacing.md) | Add three free cloud tiers, paced under their per-minute limits, and warn before prompts leave the machine | Accepted |
 | [0041](0041-item-verdict-from-pass-counts.md) | Decide each test case from pass counts with a continuity-corrected Newcombe interval and an equivalence margin | Accepted |
 | [0042](0042-sequential-stopping-by-betting.md) | Stop asking as soon as the verdict is clear, with test-by-betting wealths that are safe to check after every answer | Accepted |
+| [0043](0043-suite-control-with-e-bh.md) | Control the false discovery rate across a suite with e-BH on the betting wealths | Accepted |

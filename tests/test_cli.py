@@ -479,3 +479,20 @@ def test_stats_simulate_rejects_a_rate_above_one() -> None:
     result = runner.invoke(app, ["stats", "simulate", "1.2", "0.5"])
     assert result.exit_code == 2
     assert "between 0 and 1" in result.stderr
+
+
+def test_stats_simulate_suite_counts_false_alarms_with_and_without_control() -> None:
+    result = runner.invoke(
+        app, ["stats", "simulate-suite", "--items", "40", "--regressed", "10", "--seed", "1"]
+    )
+    assert result.exit_code == 0
+    assert "Simulated suite: 40 test cases, 10 made worse by 30 points (seed 1)" in result.stdout
+    assert "REGRESSED: 10 (10 really worse, 0 false alarms)" in result.stdout
+    assert "Answers per model:" in result.stdout
+    assert "Without suite control:" in result.stdout
+
+
+def test_stats_simulate_suite_rejects_more_regressions_than_items() -> None:
+    result = runner.invoke(app, ["stats", "simulate-suite", "--items", "5", "--regressed", "6"])
+    assert result.exit_code == 2
+    assert "regressed must be between 0 and 5" in result.stderr

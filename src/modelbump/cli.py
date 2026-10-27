@@ -32,11 +32,14 @@ from modelbump.scanner.report import (
 )
 from modelbump.stats import (
     DEFAULT_ALPHA,
+    DEFAULT_FDR,
     DEFAULT_MARGIN,
     DEFAULT_MAX_RUNS,
     Verdict,
     compare_counts,
     run_sequential,
+    run_suite,
+    simulated_suite,
 )
 
 app = typer.Typer(
@@ -461,3 +464,60 @@ def stats_simulate(
         f"Evidence (a claim is proven at {1 / alpha:g}): regressed {evidence.regressed:.1f}, "
         f"improved {evidence.improved:.1f}, equivalent {evidence.equivalent:.1f}"
     )
+
+
+@stats_app.command("simulate-suite")
+def stats_simulate_suite(
+    size: Annotated[int, typer.Option("--items", help="Test cases in the suite.")] = 300,
+    regressed: Annotated[
+        int, typer.Option(help="How many test cases the new model is really worse on.")
+    ] = 30,
+    drop: Annotated[
+        float, typer.Option(help="How much pass rate those test cases lose (0.3 = 30 points).")
+    ] = 0.3,
+    seed: Annotated[int, typer.Option(help="Random seed, so a run can be repeated.")] = 1,
+    q: Annotated[
+        float,
+        typer.Option("--fdr", help="Largest expected share of false alarms among REGRESSED."),
+    ] = DEFAULT_FDR,
+    max_runs: Annotated[
+        int, typer.Option(help="Stop a test case with INCONCLUSIVE after this many answers.")
+    ] = DEFAULT_MAX_RUNS,
+    margin: Annotated[
+        float,
+        typer.Option(
+            help="Largest change in pass rate that still counts as the same (0.1 = 10 points)."
+        ),
+    ] = DEFAULT_MARGIN,
+) -> None:
+    """Pretend two models answer a whole suite, and control false alarms across it."""
+    try:
+        suite = simulated_suite(size, regressed, drop, seed)
+        result = run_suite(suite.items, q=q, margin=margin, max_runs=max_runs)
+        uncorrected = [
+            name
+            for name, next_round in simulated_suite(size, regressed, drop, seed).items.items()
+            if run_sequential(next_round, alpha=q, margin=margin, max_runs=max_runs).verdict
+            is Verdict.REGRESSED
+            and not suite.really_worse(name)
+        ]
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(
+        f"Simulated suite: {size} test cases, {regressed} made worse by "
+        f"{drop * 100:.0f} points (seed {seed})"
+    )
+    found = result.named(Verdict.REGRESSED)
+    false_alarms = [name for name in found if not suite.really_worse(name)]
+    counts = result.counts
+    typer.echo(
+        f"REGRESSED: {len(found)} ({len(found) - len(false_alarms)} really worse, "
+        f"{len(false_alarms)} false alarms)"
+    )
+    for verdict in (Verdict.IMPROVED, Verdict.EQUIVALENT, Verdict.INCONCLUSIVE):
+        typer.echo(f"{verdict}: {counts[verdict]}")
+    typer.echo(
+        f"Answers per model: {result.total_runs:,} ({result.total_runs / size:.0f} per test case)"
+    )
+    typer.echo(f"Without suite control: {len(uncorrected)} false alarms")
