@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/imhammad/modelbump/compare/v0.1.0...v0.2.0) (2026-10-27)
+
+
+### Features
+
+* **runner:** add free cloud tiers with request pacing (ADR 0040) ([#59](https://github.com/imhammad/modelbump/issues/59)) ([14f30d2](https://github.com/imhammad/modelbump/commit/14f30d2f5a558f95b14e986ef7fc3687a6934fb9))
+* **runner:** cache model answers by a hash of the request (ADR 0037) ([#56](https://github.com/imhammad/modelbump/issues/56)) ([02f80dd](https://github.com/imhammad/modelbump/commit/02f80dd0e130ea7c6f0a2c3458980094108d96c3))
+* **runner:** call local models with retries and timeouts (ADR 0036) ([#54](https://github.com/imhammad/modelbump/issues/54)) ([29b33e7](https://github.com/imhammad/modelbump/commit/29b33e7ca222aa4e3a52f3fbc47b963981487ec6))
+* **runner:** limit tokens and requests per run (ADR 0038) ([#57](https://github.com/imhammad/modelbump/issues/57)) ([eaaf8c9](https://github.com/imhammad/modelbump/commit/eaaf8c95c91844ad7c85017550b57a1aee4bf7a8))
+* **runner:** pin local models to their digest, add models and --think (ADR 0039) ([#58](https://github.com/imhammad/modelbump/issues/58)) ([a56d79a](https://github.com/imhammad/modelbump/commit/a56d79a3ee52c95ad2ac6fa56bf863ccc8efec19))
+
 ## [0.1.0](https://github.com/imhammad/modelbump/compare/v0.0.1...v0.1.0) (2026-10-23)
 
 

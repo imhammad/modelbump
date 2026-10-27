@@ -1,6 +1,6 @@
 [project]
 name = "modelbump"
-version = "0.1.0"
+version = "0.2.0"
 description = "Find the LLM model IDs in your code and config, and warn before providers retire them."
 readme = "README.md"
 authors = [
