@@ -138,13 +138,29 @@ def test_cached_answers_are_free_so_a_rerun_finishes_the_job(tmp_path: Path) -> 
 def test_overshoot_is_limited_to_requests_in_flight() -> None:
     server = Server()
 
-    class SlowTransport(httpx.AsyncBaseTransport):
+    class HeldTransport(httpx.AsyncBaseTransport):
+        """Answers nothing until three requests are in flight, then answers them all.
+
+        Waiting for all three (instead of sleeping) keeps the test independent of
+        how fast the machine is: a slow CI runner once let one answer arrive before
+        the other requests started.
+        """
+
+        def __init__(self) -> None:
+            self.in_flight = 0
+            self.all_started = asyncio.Event()
+
         async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-            await asyncio.sleep(0.01)
+            self.in_flight += 1
+            if self.in_flight == 3:
+                self.all_started.set()
+            await self.all_started.wait()
             return server(request)
 
-    budget = Budget(max_tokens=20)
-    runner = Runner(transport=SlowTransport(), budget=budget, concurrency=3)
+    # One answer (15 tokens) is already over the limit, so no request may start
+    # after the first answer is counted, whatever order the three finish in.
+    budget = Budget(max_tokens=10)
+    runner = Runner(transport=HeldTransport(), budget=budget, concurrency=3)
     asyncio.run(runner.run_each(SUITE))
     # Three requests start before any answer arrives, then the limit holds.
     assert server.calls == 3
