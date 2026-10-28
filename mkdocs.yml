@@ -53,6 +53,7 @@ nav:
       - architecture/scanner.md
       - architecture/runner.md
       - architecture/stats.md
+      - architecture/synth.md
   - Decisions (ADRs):
       - adr/index.md
       - adr/0001-python-uv-src-layout.md
@@ -102,6 +103,7 @@ nav:
       - adr/0045-scores-and-stopping-cases-that-look-fine.md
       - adr/0046-real-model-experiment.md
       - adr/0047-real-model-results.md
+      - adr/0048-find-llm-calls-and-prompt-templates.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

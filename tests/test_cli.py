@@ -516,3 +516,48 @@ def test_stats_simulate_suite_with_futility_counts_cases_that_looked_fine() -> N
     assert result.exit_code == 0
     assert "REGRESSED: 10 (10 really worse, 0 false alarms)" in result.stdout
     assert "Stopped early because they looked fine:" in result.stdout
+
+
+DEMO = Path(__file__).parent / "fixtures" / "prompt-demo"
+
+
+def test_prompts_lists_the_demo_apps_llm_calls() -> None:
+    result = runner.invoke(app, ["prompts", str(DEMO)])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[0] == "extract.py:9  gemini  client.models.generate_content"
+    assert (
+        '  system: "You sort support tickets.\\nAnswer with one label: bug, feature, question.\\n"'
+        in lines
+    )
+    assert "  slots: words, thread" in lines
+    assert lines[-1] == (
+        "Found 4 LLM calls in 2 files (read 2 Python files): 3 with all prompt text, 1 partial."
+    )
+
+
+def test_prompts_model_filter_and_json_file(tmp_path: Path) -> None:
+    out = tmp_path / "calls.json"
+    result = runner.invoke(
+        app,
+        [
+            "prompts",
+            str(DEMO),
+            "--model",
+            "claude-3-haiku-20240307",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [
+        f"Wrote json report to {out}.",
+        "Found 1 LLM call in 1 file (read 2 Python files): 1 with all prompt text, 0 partial.",
+    ]
+    data = json.loads(out.read_text())
+    assert [call["api"] for call in data["calls"]] == ["anthropic"]
+    assert data["calls"][0]["parts"][1]["template"] == (
+        "Summarize this support thread in at most {words} words:\n{thread}"
+    )

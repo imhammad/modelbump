@@ -42,6 +42,10 @@ from modelbump.stats import (
     run_suite,
     simulated_suite,
 )
+from modelbump.synth import CallSiteResult, find_call_sites
+from modelbump.synth.report import RENDERERS as PROMPT_RENDERERS
+from modelbump.synth.report import PromptFormat
+from modelbump.synth.report import summary_line as prompts_summary
 
 app = typer.Typer(
     name="modelbump",
@@ -178,6 +182,47 @@ def check(
         typer.echo(f"Rescheduled: {len(model.superseded)} earlier plan(s) were replaced.")
     if model.replacement:
         typer.echo(f"Suggested replacement: {model.replacement}")
+
+
+@app.command()
+def prompts(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or Python file to read.", exists=True, resolve_path=True),
+    ] = Path("."),
+    model: Annotated[
+        str | None,
+        typer.Option(help="Only list the calls to this model ID, e.g. gpt-4o-mini."),
+    ] = None,
+    output_format: Annotated[
+        PromptFormat,
+        typer.Option("--format", help="Report format: text or json."),
+    ] = PromptFormat.TEXT,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Skip paths matching this pattern, e.g. 'scripts'. Repeat for more."),
+    ] = None,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(help="Leave out test files and test folders."),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
+    ] = None,
+) -> None:
+    """List the LLM calls in Python code, with each call's model and prompt template."""
+    result = find_call_sites(path, exclude or (), skip_tests)
+    if model is not None:
+        kept = tuple(call for call in result.calls if call.model == model)
+        result = CallSiteResult(kept, result.files_read, result.unparsed)
+    rendered = PROMPT_RENDERERS[output_format](result)
+    if output is None:
+        typer.echo(rendered, nl=False)
+    else:
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Wrote {output_format.value} report to {output}.")
+        typer.echo(prompts_summary(result))
 
 
 @app.command()
