@@ -29,7 +29,7 @@ def test_text_report_lists_each_call() -> None:
         '  user: "Q: {q}"',
         "  slots: q",
         "app.py:7  openai_chat  client.chat.completions.create  (partial)",
-        "  model: cfg.model (value not in this file)",
+        "  model: cfg.model (value not found in the code)",
         "  unknown: (could not read: history)",
         "app.py:8  openai_completions  client.completions.create  (partial)",
         "  model: (not given in the call)",

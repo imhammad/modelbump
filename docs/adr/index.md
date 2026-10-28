@@ -54,3 +54,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0046](0046-real-model-experiment.md) | Test the stats engine on real local models with computed answers, a null pair and injected regressions | Accepted |
 | [0047](0047-real-model-results.md) | Pick fixed k + BH or sequential + e-BH by budget, and report regressions per test case | Accepted |
 | [0048](0048-find-llm-calls-and-prompt-templates.md) | Find each LLM call and its prompt template with Python's own parser, inside one file | Accepted |
+| [0049](0049-follow-prompts-across-files-classes-and-functions.md) | Follow prompts into other files, class attributes and the app's own prompt functions | Accepted |

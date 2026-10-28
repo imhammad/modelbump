@@ -89,7 +89,7 @@ def _model(call: CallSite) -> str:
     if call.model is not None:
         return call.model
     if call.model_source is not None:
-        return f"{call.model_source} (value not in this file)"
+        return f"{call.model_source} (value not found in the code)"
     return "(not given in the call)"
 
 
