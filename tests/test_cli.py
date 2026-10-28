@@ -722,3 +722,229 @@ def test_oracles_with_no_calls(tmp_path: Path) -> None:
     result = runner.invoke(app, ["oracles", str(tmp_path)])
     assert result.exit_code == 0
     assert result.stdout == "Picked oracles for 0 LLM calls.\n"
+
+
+def _fake_models(monkeypatch: pytest.MonkeyPatch, broken: str = "") -> list[dict[str, object]]:
+    """Two fake models. The new one gives a wrong label when the ticket contains `broken`."""
+    seen: list[dict[str, object]] = []
+
+    def server(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        prompt = body["messages"][-1]["content"]
+        if prompt.startswith("Ticket"):
+            text = "feature" if broken and broken in prompt and "new" in body["model"] else "bug"
+        else:
+            text = "A short answer, two sentences at most. Done."
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+            },
+        )
+
+    real_init = Runner.__init__
+
+    def init_with_fake_server(self: Runner, **options: object) -> None:
+        real_init(self, transport=httpx.MockTransport(server), **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Runner, "__init__", init_with_fake_server)
+    return seen
+
+
+def test_suite_writes_the_demo_suite(tmp_path: Path) -> None:
+    out = tmp_path / "suite.json"
+    result = runner.invoke(app, ["suite", str(DEMO), "--output", str(out)])
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [
+        f"Wrote 5 test cases for 3 LLM calls to {out}.",
+        "  left out extract.py:9: no complete test case",
+        "  left out support.py:39: no complete test case",
+    ]
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert [c["id"] for c in data["cases"]][:2] == ["bot.py:14#1", "support.py:24#1"]
+
+
+def test_suite_with_generated_cases_and_a_model_filter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_writer(monkeypatch)
+    out = tmp_path / "suite.json"
+    result = runner.invoke(
+        app,
+        [
+            "suite",
+            str(DEMO),
+            "--generate",
+            "2",
+            "--model",
+            "gemini-2.0-flash",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [f"Wrote 2 test cases for 1 LLM call to {out}."]
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert {c["generated_by"] for c in data["cases"]} == {"ollama/qwen2.5:7b"}
+    assert data["cases"][0]["oracle"]["kind"] == "json"
+
+
+def _demo_suite(tmp_path: Path) -> Path:
+    out = tmp_path / "suite.json"
+    assert runner.invoke(app, ["suite", str(DEMO), "--output", str(out)]).exit_code == 0
+    return out
+
+
+def test_test_passes_when_nothing_regressed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    seen = _fake_models(monkeypatch)
+    result = runner.invoke(
+        app,
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "ollama/new",
+            "--to-think",
+            "none",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0] == (
+        "Compared ollama/old -> ollama/new on 5 test cases: fixed k=50 + BH "
+        "(q 0.05, margin 0.10), 3 reference answers per case."
+    )
+    assert lines[-1] == "Result: 0 regressed, 0 inconclusive, 5 equivalent, 0 improved."
+    assert len(seen) == 5 * (3 + 50 + 50)
+    new = [body for body in seen if body["model"] == "new"]
+    assert {body["reasoning_effort"] for body in new} == {"none"}
+    assert "Spent: 515 requests" in result.stderr
+    # A second run reads every answer from the cache.
+    again = runner.invoke(
+        app,
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "ollama/new",
+            "--to-think",
+            "none",
+        ],
+    )
+    assert again.stdout == result.stdout
+    assert "Spent: 0 requests" in again.stderr
+
+
+def test_test_fails_on_a_regression_and_writes_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch, broken="crashes")
+    out = tmp_path / "report.json"
+    result = runner.invoke(
+        app,
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "ollama/new",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 1
+    assert result.stdout.splitlines() == [
+        f"Wrote json report to {out}.",
+        "Result: 1 regressed, 0 inconclusive, 4 equivalent, 0 improved.",
+    ]
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["cases"][0]["id"] == "support.py:24#1"
+    assert data["cases"][0]["verdict"] == "REGRESSED"
+
+
+def test_test_budget_says_how_to_continue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch)
+    result = runner.invoke(
+        app,
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "ollama/new",
+            "--budget-requests",
+            "50",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "could not be run" in result.stdout
+    assert "run the same command with a higher limit" in result.stderr
+
+
+def test_test_errors_before_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{}", encoding="utf-8")
+    result = runner.invoke(app, ["test", str(bad), "--from", "ollama/a", "--to", "ollama/b"])
+    assert result.exit_code == 2
+    assert "not a version 1 suite file" in result.stderr
+
+    empty = tmp_path / "empty.json"
+    empty.write_text('{"version": 1, "cases": []}', encoding="utf-8")
+    result = runner.invoke(app, ["test", str(empty), "--from", "ollama/a", "--to", "ollama/b"])
+    assert result.exit_code == 2
+    assert "the suite has no test cases" in result.stderr
+
+    suite_file = _demo_suite(tmp_path)
+    result = runner.invoke(
+        app, ["test", str(suite_file), "--from", "nowhere/a", "--to", "ollama/b"]
+    )
+    assert result.exit_code == 2
+    assert "Error:" in result.stderr
+
+    def not_pulled(requests: object) -> object:
+        raise RunnerError("ollama/b: this model is not pulled. Run: ollama pull b")
+
+    monkeypatch.setattr("modelbump.cli.pin_versions", not_pulled)
+    result = runner.invoke(app, ["test", str(suite_file), "--from", "ollama/a", "--to", "ollama/b"])
+    assert result.exit_code == 2
+    assert "Run: ollama pull b" in result.stderr
+
+
+def test_test_warns_before_a_cloud_tier(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    result = runner.invoke(
+        app,
+        # One allowed request: the warning comes first, and no request waits for Groq's pacing.
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "groq/new",
+            "--runs",
+            "1",
+            "--reference",
+            "1",
+            "--budget-requests",
+            "1",
+        ],
+    )
+    assert "The app's prompts leave this machine" in result.stderr

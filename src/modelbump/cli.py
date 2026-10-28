@@ -2,6 +2,7 @@
 
 import asyncio
 import random
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -42,6 +43,15 @@ from modelbump.stats import (
     run_sequential,
     run_suite,
     simulated_suite,
+)
+from modelbump.suite import Method, Settings, build_suite, read_suite, suite_to_json
+from modelbump.suite.report import render_run_json, render_run_text, run_summary
+from modelbump.suite.run import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_REFERENCE,
+    DEFAULT_RUNS,
+    DEFAULT_TEMPERATURE,
+    run_suite_on_models,
 )
 from modelbump.synth import CallSiteResult, find_call_sites
 from modelbump.synth.cases import CaseResult, SiteCases, find_cases
@@ -324,6 +334,172 @@ def _generate_cases(
     for site, reason in done.skipped:
         typer.echo(f"  {site.path}:{site.line}: {reason}", err=True)
     return done.result
+
+
+@app.command()
+def suite(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or Python file to read.", exists=True, resolve_path=True),
+    ] = Path("."),
+    output: Annotated[
+        Path,
+        typer.Option(help="Where to write the suite file.", dir_okay=False),
+    ] = Path("modelbump-suite.json"),
+    model: Annotated[
+        str | None,
+        typer.Option(help="Only the calls to this model ID, e.g. gpt-4o-mini."),
+    ] = None,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Leave out calls in paths matching this pattern. Repeat for more."),
+    ] = None,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(help="Leave out calls made in test files (their inputs are still read)."),
+    ] = False,
+    generate: Annotated[
+        int,
+        typer.Option(
+            min=0,
+            help="Have a model write inputs until each call with slots has this many cases.",
+        ),
+    ] = 0,
+    generator: Annotated[
+        str,
+        typer.Option(help="The model that writes inputs, as endpoint/model."),
+    ] = DEFAULT_GENERATOR,
+    budget_requests: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop after this many requests to the writer model."),
+    ] = None,
+) -> None:
+    """Write a suite file: every complete test case, with its messages and its oracle."""
+    result = find_cases(path, exclude or (), skip_tests)
+    if model is not None:
+        kept: tuple[SiteCases, ...] = tuple(s for s in result.sites if s.site.model == model)
+        result = CaseResult(kept, result.files_read, result.unparsed)
+    if generate > 0:
+        result = _generate_cases(result, generate, generator, budget_requests)
+    built = build_suite(result)
+    output.write_text(suite_to_json(built), encoding="utf-8")
+    calls = len({(c.path, c.line) for c in built.cases})
+    typer.echo(
+        f"Wrote {len(built.cases)} test {'case' if len(built.cases) == 1 else 'cases'} "
+        f"for {calls} LLM {'call' if calls == 1 else 'calls'} to {output}."
+    )
+    for where, reason in built.left_out:
+        typer.echo(f"  left out {where}: {reason}")
+
+
+@app.command("test")
+def test_models(
+    suite_file: Annotated[
+        Path,
+        typer.Argument(help="The suite file from `modelbump suite`.", exists=True, dir_okay=False),
+    ],
+    old: Annotated[
+        str, typer.Option("--from", help="The model the app uses now, as endpoint/model.")
+    ],
+    new: Annotated[str, typer.Option("--to", help="The model to move to, as endpoint/model.")],
+    runs: Annotated[
+        int, typer.Option(min=1, help="Answers per model per case (the most, for sequential).")
+    ] = DEFAULT_RUNS,
+    reference: Annotated[
+        int,
+        typer.Option(min=1, help="Old-model answers per case that set the reference (not scored)."),
+    ] = DEFAULT_REFERENCE,
+    method: Annotated[
+        Method,
+        typer.Option(help="fixed (k + BH), sequential (+ e-BH), or auto (by --runs, ADR 0047)."),
+    ] = Method.AUTO,
+    from_think: Annotated[
+        str | None,
+        typer.Option(help="Reasoning effort for the --from model: none, low, medium or high."),
+    ] = None,
+    to_think: Annotated[
+        str | None,
+        typer.Option(help="Reasoning effort for the --to model, e.g. none for Qwen 3."),
+    ] = None,
+    temperature: Annotated[
+        float, typer.Option(min=0.0, help="Sampling temperature for both models.")
+    ] = DEFAULT_TEMPERATURE,
+    max_tokens: Annotated[
+        int, typer.Option(min=1, help="Longest answer, in tokens.")
+    ] = DEFAULT_MAX_TOKENS,
+    budget_requests: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop after this many requests (cached answers are free)."),
+    ] = None,
+    output_format: Annotated[
+        PromptFormat,
+        typer.Option("--format", help="Report format: text or json (every answer and score)."),
+    ] = PromptFormat.TEXT,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
+    ] = None,
+) -> None:
+    """Run a suite on the old and the new model and decide each test case.
+
+    Exits with 1 when a case REGRESSED or could not be run, so CI can fail on it.
+    """
+    try:
+        cases_to_run = read_suite(suite_file)
+        settings = Settings(
+            old=old,
+            new=new,
+            runs=runs,
+            reference=reference,
+            method=method,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            old_think=from_think,
+            new_think=to_think,
+        )
+        endpoints = [resolve_model(model_name)[0] for model_name in (old, new)]
+        probes = pin_versions([ChatRequest.ask(old, "version"), ChatRequest.ask(new, "version")])
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    except RunnerError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    if not cases_to_run.cases:
+        typer.echo("Error: the suite has no test cases.", err=True)
+        raise typer.Exit(code=2)
+    if not all(endpoint.local for endpoint in endpoints):
+        typer.echo(
+            "Note: a free cloud tier is in use. The app's prompts leave this machine "
+            "and may be kept or read by the provider. Never send private code.",
+            err=True,
+        )
+    settings = replace(
+        settings, old_version=probes[0].model_version, new_version=probes[1].model_version
+    )
+    cache = ResponseCache()
+    budget = Budget(max_requests=budget_requests)
+    runner = Runner(cache=cache, budget=budget)
+    try:
+        result = asyncio.run(run_suite_on_models(cases_to_run, runner, settings))
+    finally:
+        cache.close()
+    render = render_run_json if output_format is PromptFormat.JSON else render_run_text
+    rendered = render(result)
+    if output is None:
+        typer.echo(rendered, nl=False)
+    else:
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Wrote {output_format.value} report to {output}.")
+        typer.echo(run_summary(result))
+    typer.echo(budget.summary(), err=True)
+    if result.errors and budget_requests is not None:
+        typer.echo(
+            "Answers so far are cached: run the same command with a higher limit to continue.",
+            err=True,
+        )
+    if result.regressed or result.errors:
+        raise typer.Exit(code=1)
 
 
 @app.command()

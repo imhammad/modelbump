@@ -39,7 +39,7 @@ result.value  # 0.83
 result.failed  # ("has total",)
 ```
 
-The answers that build the reference are kept apart from the answers that are compared, so the old model is not graded on its own reference.
+The answers that build the reference are kept apart from the answers that are compared, so the old model is not graded on its own reference. [`modelbump test`](suite.md) does this for every case.
 
 ## Limits (for now)
 
