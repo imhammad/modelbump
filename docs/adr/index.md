@@ -57,3 +57,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0049](0049-follow-prompts-across-files-classes-and-functions.md) | Follow prompts into other files, class attributes and the app's own prompt functions | Accepted |
 | [0050](0050-test-inputs-from-the-apps-own-callers.md) | Take the first test inputs from the values the app's own tests and code pass in | Accepted |
 | [0051](0051-generated-test-inputs-from-a-local-model.md) | Have a local model write the missing test inputs, and mark every one as generated | Accepted |
+| [0052](0052-oracles-by-output-type.md) | Check answers against the old model's answers, with an oracle picked by output type | Accepted |

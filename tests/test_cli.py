@@ -673,3 +673,52 @@ def test_cases_generate_warns_before_a_cloud_writer(monkeypatch: pytest.MonkeyPa
     )
     assert result.exit_code == 0
     assert "The app's prompts leave this machine" in result.stderr
+
+
+def test_oracles_lists_the_check_for_each_demo_call() -> None:
+    result = runner.invoke(app, ["oracles", str(DEMO)])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert "extract.py:9  gemini  json" in lines
+    assert '  why: the prompt says "JSON"' in lines
+    assert "support.py:24  openai_chat  label" in lines
+    assert "  why: the prompt lists labels: bug, feature, question" in lines
+    assert "  checks: one of the labels, same label as before" in lines
+    assert lines[-1] == "Picked oracles for 5 LLM calls: 1 json, 1 label, 3 text."
+
+
+def test_oracles_json_file_for_one_model(tmp_path: Path) -> None:
+    out = tmp_path / "oracles.json"
+    result = runner.invoke(
+        app,
+        ["oracles", str(DEMO), "--model", "gpt-4o-mini", "--format", "json", "--output", str(out)],
+    )
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [
+        f"Wrote json report to {out}.",
+        "Picked oracles for 2 LLM calls: 1 label, 1 text.",
+    ]
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["version"] == 1
+    kinds = {(c["path"], c["kind"]) for c in data["calls"]}
+    assert kinds == {("bot.py", "text"), ("support.py", "label")}
+    label = next(c for c in data["calls"] if c["kind"] == "label")
+    assert label["labels"] == ["bug", "feature", "question"]
+
+
+def test_oracles_mentions_tool_calls_are_not_scored(tmp_path: Path) -> None:
+    (tmp_path / "agent.py").write_text(
+        'client.chat.completions.create(model="m", messages=[], tools=TOOLS)\n', encoding="utf-8"
+    )
+    result = runner.invoke(app, ["oracles", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "  why: the call passes tools (tool calls are not scored yet)" in result.stdout
+    assert result.stdout.splitlines()[-1] == (
+        "Picked oracles for 1 LLM call: 1 tools. Tool calls are not scored yet."
+    )
+
+
+def test_oracles_with_no_calls(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["oracles", str(tmp_path)])
+    assert result.exit_code == 0
+    assert result.stdout == "Picked oracles for 0 LLM calls.\n"

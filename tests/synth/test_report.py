@@ -54,6 +54,7 @@ def test_json_report_has_full_templates() -> None:
     first = data["calls"][0]
     assert first["model"] == "gpt-4o-mini"
     assert first["model_source"] == "MODEL"
+    assert first["output"] is None
     assert first["complete"] is True
     assert first["slots"] == ["q"]
     assert first["parts"][0] == {

@@ -71,6 +71,7 @@ def _call_json(call: CallSite) -> dict[str, object]:
         "call": call.call,
         "model": call.model,
         "model_source": call.model_source,
+        "output": call.output,
         "complete": call.complete,
         "slots": list(call.slots),
         "parts": [

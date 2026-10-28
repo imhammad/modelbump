@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from modelbump import __version__
+from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
 from modelbump.runner import (
     Budget,
@@ -323,6 +324,48 @@ def _generate_cases(
     for site, reason in done.skipped:
         typer.echo(f"  {site.path}:{site.line}: {reason}", err=True)
     return done.result
+
+
+@app.command()
+def oracles(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or Python file to read.", exists=True, resolve_path=True),
+    ] = Path("."),
+    model: Annotated[
+        str | None,
+        typer.Option(help="Only list the calls to this model ID, e.g. gpt-4o-mini."),
+    ] = None,
+    output_format: Annotated[
+        PromptFormat,
+        typer.Option("--format", help="Report format: text or json."),
+    ] = PromptFormat.TEXT,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Skip paths matching this pattern, e.g. 'scripts'. Repeat for more."),
+    ] = None,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(help="Leave out test files and test folders."),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
+    ] = None,
+) -> None:
+    """Show how each LLM call's answers will be checked: JSON, label or free text."""
+    result = find_call_sites(path, exclude or (), skip_tests)
+    if model is not None:
+        kept = tuple(call for call in result.calls if call.model == model)
+        result = CallSiteResult(kept, result.files_read, result.unparsed)
+    render = render_oracles_json if output_format is PromptFormat.JSON else render_oracles_text
+    rendered = render(result)
+    if output is None:
+        typer.echo(rendered, nl=False)
+    else:
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Wrote {output_format.value} report to {output}.")
+        typer.echo(oracles_summary(result))
 
 
 @app.command()

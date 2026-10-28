@@ -96,6 +96,9 @@ class CallSite:
     model_source: str | None
     """The code given as the model, or None when the call has no model argument."""
     parts: tuple[PromptPart, ...]
+    output: str | None = None
+    """What the call's own settings ask for: ``json`` (``response_format`` and the
+    like), ``tools`` (``tools=`` or ``functions=``), or None for plain text."""
 
     @property
     def complete(self) -> bool:
@@ -848,7 +851,48 @@ def _call_site(path: str, call: ast.Call, names: _Resolver) -> CallSite | None:
         model=model,
         model_source=_short(ast.unparse(model_expr)) if model_expr is not None else None,
         parts=tuple(parts),
+        output=_output_mode(call, names),
     )
+
+
+# Keywords that set the output format, per API: OpenAI ``response_format``
+# (chat) and ``text`` / ``text_format`` (responses), Ollama ``format``,
+# Gemini ``config`` / ``generation_config`` (``response_mime_type``, ``response_schema``).
+_FORMAT_KEYWORDS = (
+    "response_format",
+    "text_format",
+    "text",
+    "format",
+    "config",
+    "generation_config",
+)
+
+
+def _output_mode(call: ast.Call, names: _Resolver) -> str | None:
+    """``tools``, ``json`` or None, from the call's own keywords (ADR 0052)."""
+    for keyword in ("tools", "functions"):
+        value = _keyword(call, keyword)
+        if value is not None and not (isinstance(value, ast.Constant) and value.value is None):
+            return "tools"
+    parse = _chain(call.func)[-1:] == ["parse"]
+    for keyword in _FORMAT_KEYWORDS:
+        value = _keyword(call, keyword)
+        if value is None:
+            continue
+        if parse and keyword in ("response_format", "text_format"):
+            return "json"  # .parse(response_format=SomeModel) returns structured output.
+        value = _follow(value, names)[0]
+        if keyword != "format" and isinstance(value, ast.Constant | ast.JoinedStr):
+            continue  # A plain string here is text, not a format setting.
+        code = ast.unparse(value).lower()
+        if keyword in ("config", "generation_config"):
+            if "tools" in code:
+                return "tools"
+            if "application/json" in code or "response_schema" in code:
+                return "json"
+        elif "json" in code:
+            return "json"
+    return None
 
 
 def _add_text(parts: list[PromptPart], role: str, expr: ast.expr | None, names: _Resolver) -> None:

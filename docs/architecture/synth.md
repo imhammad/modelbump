@@ -137,6 +137,8 @@ Found 9 test cases (9 complete, 4 generated) for 4 of 5 LLM calls.
 
 The values above are only an example; the model writes its own. Requests are seeded and cached, so running the same command again prints the same cases from the cache. Calls with a message that cannot be read (such as `history`) are not asked. A call that ends up with too few cases is listed on stderr with the reason.
 
+How each case's answers are checked is on the [Oracles](oracles.md) page.
+
 ## Limits (for now)
 
 - Python only. TypeScript and JavaScript come later, with tree-sitter.
