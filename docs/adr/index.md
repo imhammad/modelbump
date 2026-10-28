@@ -55,3 +55,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0047](0047-real-model-results.md) | Pick fixed k + BH or sequential + e-BH by budget, and report regressions per test case | Accepted |
 | [0048](0048-find-llm-calls-and-prompt-templates.md) | Find each LLM call and its prompt template with Python's own parser, inside one file | Accepted |
 | [0049](0049-follow-prompts-across-files-classes-and-functions.md) | Follow prompts into other files, class attributes and the app's own prompt functions | Accepted |
+| [0050](0050-test-inputs-from-the-apps-own-callers.md) | Take the first test inputs from the values the app's own tests and code pass in | Accepted |

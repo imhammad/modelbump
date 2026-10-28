@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+# Demo apps that tests read as data. Their own tests are not ModelBump's tests.
+collect_ignore_glob = ["fixtures/*"]
+
 
 @pytest.fixture(autouse=True)
 def _private_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

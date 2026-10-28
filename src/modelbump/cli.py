@@ -43,8 +43,9 @@ from modelbump.stats import (
     simulated_suite,
 )
 from modelbump.synth import CallSiteResult, find_call_sites
+from modelbump.synth.cases import CaseResult, SiteCases, find_cases
+from modelbump.synth.report import CASE_RENDERERS, PromptFormat, cases_summary
 from modelbump.synth.report import RENDERERS as PROMPT_RENDERERS
-from modelbump.synth.report import PromptFormat
 from modelbump.synth.report import summary_line as prompts_summary
 
 app = typer.Typer(
@@ -223,6 +224,47 @@ def prompts(
         output.write_text(rendered, encoding="utf-8")
         typer.echo(f"Wrote {output_format.value} report to {output}.")
         typer.echo(prompts_summary(result))
+
+
+@app.command()
+def cases(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or Python file to read.", exists=True, resolve_path=True),
+    ] = Path("."),
+    model: Annotated[
+        str | None,
+        typer.Option(help="Only list the calls to this model ID, e.g. gpt-4o-mini."),
+    ] = None,
+    output_format: Annotated[
+        PromptFormat,
+        typer.Option("--format", help="Report format: text or json."),
+    ] = PromptFormat.TEXT,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Do not list calls in paths matching this pattern. Repeat for more."),
+    ] = None,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(help="Do not list calls made in test files (their inputs are still read)."),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
+    ] = None,
+) -> None:
+    """Find test inputs for each LLM call in the values the app's own tests and code pass in."""
+    result = find_cases(path, exclude or (), skip_tests)
+    if model is not None:
+        kept: tuple[SiteCases, ...] = tuple(s for s in result.sites if s.site.model == model)
+        result = CaseResult(kept, result.files_read, result.unparsed)
+    rendered = CASE_RENDERERS[output_format](result)
+    if output is None:
+        typer.echo(rendered, nl=False)
+    else:
+        output.write_text(rendered, encoding="utf-8")
+        typer.echo(f"Wrote {output_format.value} report to {output}.")
+        typer.echo(cases_summary(result))
 
 
 @app.command()

@@ -2,7 +2,7 @@
 
 **Job:** turn an app's own LLM calls into regression test cases that the runner and the stats engine can compare on the old and new model.
 
-**Code:** `src/modelbump/synth/` · **Command:** `modelbump prompts PATH` · **Decisions:** [ADR 0048](../adr/0048-find-llm-calls-and-prompt-templates.md), [ADR 0049](../adr/0049-follow-prompts-across-files-classes-and-functions.md)
+**Code:** `src/modelbump/synth/` · **Commands:** `modelbump prompts PATH`, `modelbump cases PATH` · **Decisions:** [ADR 0048](../adr/0048-find-llm-calls-and-prompt-templates.md), [ADR 0049](../adr/0049-follow-prompts-across-files-classes-and-functions.md), [ADR 0050](../adr/0050-test-inputs-from-the-apps-own-callers.md)
 
 ```mermaid
 flowchart LR
@@ -10,12 +10,14 @@ flowchart LR
     calls --> sites[CallSite: path, line, API,<br/>model, messages as templates]
     sites --> report[report.py<br/>text or JSON]
     report --> cli[modelbump prompts]
-    sites -.later steps.-> inputs[test inputs for the slots]
-    inputs -.-> oracles[oracles by output type]
+    sites --> cases[cases.py<br/>values from the app's<br/>tests and callers]
+    cases --> cli2[modelbump cases]
+    cases -.later steps.-> generated[generated inputs]
+    generated -.-> oracles[oracles by output type]
     oracles -.-> suite[regression suite]
 ```
 
-Only the first box is built so far (Steps P5-1 and P5-2). The dotted ones are the next steps of Phase 5.
+Steps P5-1 to P5-3 built the solid boxes. The dotted ones are the next steps of Phase 5.
 
 ## What a call site holds
 
@@ -84,6 +86,39 @@ Found 5 LLM calls in 3 files (read 4 Python files): 4 with all prompt text, 1 pa
 ```
 
 `bot.py` takes its model, system prompt and question template from `prompts.py`. `--model gpt-4o-mini` keeps the calls to one model, and `--format json --output calls.json` writes the full templates.
+
+## Test cases from the app's own code
+
+A slot gets a value where the app calls the function that holds the LLM call. `modelbump cases` finds those calls in every Python file, tests included, binds the function's parameters to the call's arguments, and reads the call site again:
+
+```python
+# support.py
+def classify(client, ticket):
+    ...create(model=MODEL, messages=[..., {"role": "user", "content": f"Ticket:\n{ticket}"}])
+
+# tests/test_support.py
+@pytest.mark.parametrize("ticket", ["The app crashes when I log in.", "Could you add a dark mode?"])
+def test_classify_sends_the_ticket(ticket):
+    classify(MagicMock(), ticket)
+```
+
+gives two complete cases for `support.py:24`, one per row, with the final messages to send. Only values written in the code count: strings, numbers and literal lists or dicts, through names, constants and imports. A caller that passes its own variable gives no case.
+
+```console
+$ modelbump cases tests/fixtures/prompt-demo
+bot.py:14  openai_chat  self.client.chat.completions.create  model: gpt-4o-mini
+  tests/test_support.py:36  question="How do I reset my password?"
+extract.py:9  gemini  client.models.generate_content  model: gemini-2.0-flash
+  no cases (slots: email)
+support.py:24  openai_chat  client.chat.completions.create  model: gpt-4o-mini
+  tests/test_support.py:16  ticket="The app crashes when I log in."
+  tests/test_support.py:17  ticket="Could you add a dark mode?"
+  tests/test_support.py:18  ticket="How do I export my data?"
+...
+Found 5 test cases (5 complete) for 3 of 5 LLM calls. No case yet for 1 with slots (extract.py:9).
+```
+
+`--format json` gives each complete case's `messages`. Real apps rarely call their prompt functions with written values (1 case for 82 calls in five open-source apps, ADR 0050), so most cases will come from generated inputs, the next step.
 
 ## Limits (for now)
 

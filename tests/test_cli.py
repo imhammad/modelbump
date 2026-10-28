@@ -540,7 +540,7 @@ def test_prompts_lists_the_demo_apps_llm_calls() -> None:
     )
     assert "  slots: words, thread" in lines
     assert lines[-1] == (
-        "Found 5 LLM calls in 3 files (read 4 Python files): 4 with all prompt text, 1 partial."
+        "Found 5 LLM calls in 3 files (read 5 Python files): 4 with all prompt text, 1 partial."
     )
 
 
@@ -562,10 +562,51 @@ def test_prompts_model_filter_and_json_file(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert result.stdout.splitlines() == [
         f"Wrote json report to {out}.",
-        "Found 1 LLM call in 1 file (read 4 Python files): 1 with all prompt text, 0 partial.",
+        "Found 1 LLM call in 1 file (read 5 Python files): 1 with all prompt text, 0 partial.",
     ]
     data = json.loads(out.read_text())
     assert [call["api"] for call in data["calls"]] == ["anthropic"]
     assert data["calls"][0]["parts"][1]["template"] == (
         "Summarize this support thread in at most {words} words:\n{thread}"
     )
+
+
+def test_cases_reads_the_demo_apps_tests() -> None:
+    result = runner.invoke(app, ["cases", str(DEMO)])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[:2] == [
+        "bot.py:14  openai_chat  self.client.chat.completions.create  model: gpt-4o-mini",
+        '  tests/test_support.py:36  question="How do I reset my password?"',
+    ]
+    assert '  tests/test_support.py:17  ticket="Could you add a dark mode?"' in lines
+    assert lines[-1] == (
+        "Found 5 test cases (5 complete) for 3 of 5 LLM calls. "
+        "No case yet for 1 with slots (extract.py:9)."
+    )
+
+
+def test_cases_json_for_one_model(tmp_path: Path) -> None:
+    out = tmp_path / "cases.json"
+    result = runner.invoke(
+        app,
+        [
+            "cases",
+            str(DEMO),
+            "--model",
+            "claude-3-haiku-20240307",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+            "--skip-tests",
+        ],
+    )
+    assert result.exit_code == 0
+    assert result.stdout.splitlines()[-1] == ("Found 1 test case (1 complete) for 1 of 1 LLM call.")
+    (call,) = json.loads(out.read_text())["calls"]
+    assert call["cases"][0]["messages"][1] == {
+        "role": "user",
+        "content": "Summarize this support thread in at most 30 words:\n"
+        "Customer: my order is late.\nAgent: it ships tomorrow.",
+    }

@@ -149,17 +149,7 @@ def find_call_sites(
     too (``from .prompts import SYSTEM``), whether or not those files are
     left out of the report by ``exclude`` or ``skip_tests``.
     """
-    if root.is_file():
-        paths = [root]
-        base = root.parent
-    else:
-        paths = [p for p in iter_source_files(root, exclude=()) if p.suffix in {".py", ".pyi"}]
-        base = root
-    sources: dict[str, str] = {}
-    for path in paths:
-        text = read_source(path)
-        if text is not None:
-            sources[path.relative_to(base).as_posix()] = text
+    sources = _read_sources(root)
     project = _Project(sources)
     calls: list[CallSite] = []
     unparsed: list[str] = []
@@ -174,6 +164,22 @@ def find_call_sites(
             continue
         calls.extend(_module_calls(module, project))
     return CallSiteResult(tuple(calls), read, tuple(unparsed))
+
+
+def _read_sources(root: Path) -> dict[str, str]:
+    """Every Python file under ``root`` (or ``root`` itself), by path relative to the folder."""
+    if root.is_file():
+        paths = [root]
+        base = root.parent
+    else:
+        paths = [p for p in iter_source_files(root, exclude=()) if p.suffix in {".py", ".pyi"}]
+        base = root
+    sources: dict[str, str] = {}
+    for path in paths:
+        text = read_source(path)
+        if text is not None:
+            sources[path.relative_to(base).as_posix()] = text
+    return sources
 
 
 def _excluded(rel: str, exclude: Sequence[str]) -> bool:
@@ -267,6 +273,8 @@ class _CallRecord:
     call: ast.Call
     scopes: tuple[_Scope, ...]
     owner: _Owner | None
+    function: _Function | None
+    """The function the call is written in, or None at module level."""
 
 
 class _Collector(ast.NodeVisitor):
@@ -278,6 +286,7 @@ class _Collector(ast.NodeVisitor):
         self.is_package = is_package
         self.frames: list[_Scope | _Class] = [_Scope(is_module=True)]
         self.owners: list[_Owner | None] = [None]
+        self.functions: list[_Function | None] = [None]
         self.calls: list[_CallRecord] = []
         self.imports: dict[str, tuple[str, str | None]] = {}
         """Local name -> (module, name in it); the name is None for ``import a.b``."""
@@ -307,13 +316,16 @@ class _Collector(ast.NodeVisitor):
         scope.annotations = {a.arg: a.annotation for a in every if a.annotation is not None}
         self.frames.append(scope)
         self.owners.append(owner)
+        function: _Function | None = None
         if not isinstance(node, ast.Lambda):
             function = _Function(node, self.scopes, owner, kind, self.path)
             if isinstance(parent, _Class):
                 parent.methods[node.name] = function
             else:
                 parent.functions[node.name] = function
+        self.functions.append(function)
         self.generic_visit(node)
+        self.functions.pop()
         self.owners.pop()
         self.frames.pop()
 
@@ -412,7 +424,7 @@ class _Collector(ast.NodeVisitor):
                 value = ast.List(elts=[value], ctx=ast.Load())
                 ast.copy_location(value, node.args[0])
             scope.appended.setdefault(func.value.id, []).append((node.lineno, value))
-        self.calls.append(_CallRecord(node, self.scopes, self.owners[-1]))
+        self.calls.append(_CallRecord(node, self.scopes, self.owners[-1], self.functions[-1]))
         self.generic_visit(node)
 
 
@@ -1209,15 +1221,35 @@ def _returned(call: ast.Call, names: _Resolver) -> tuple[ast.expr, _Resolver] | 
     if found is None:
         return None
     function, passes_first = found
-    node = function.node
-    returns = [n for n in _own_nodes(node) if isinstance(n, ast.Return) and n.value is not None]
+    returns = [
+        n for n in _own_nodes(function.node) if isinstance(n, ast.Return) and n.value is not None
+    ]
     if len(returns) != 1 or returns[0].value is None:
         return None
+    arguments = _bind(function, passes_first, call, names)
+    module = names.project.module_at(function.path)
+    if arguments is None or module is None:
+        return None
+    ret = returns[0]
+    assert ret.value is not None
+    inner = _Resolver(function.scopes, ret.lineno, module, names.project, function.owner, arguments)
+    return ret.value, inner
+
+
+def _bind(
+    function: _Function, passes_first: bool, call: ast.Call, names: _Resolver
+) -> dict[str, tuple[ast.expr, _Resolver]] | None:
+    """Bind a function's parameters to a call's arguments, then to their defaults.
+
+    Arguments are read where the call is (``names``); defaults where the function is
+    defined. None when the call uses ``*args``, since then we cannot tell which is which.
+    """
     if any(isinstance(arg, ast.Starred) for arg in call.args):
         return None
     module = names.project.module_at(function.path)
     if module is None:
         return None
+    node = function.node
     arguments: dict[str, tuple[ast.expr, _Resolver]] = {}
     params = node.args.posonlyargs + node.args.args
     if passes_first:
@@ -1235,10 +1267,7 @@ def _returned(call: ast.Call, names: _Resolver) -> tuple[ast.expr, _Resolver] | 
     for keyword in call.keywords:
         if keyword.arg is not None:
             arguments[keyword.arg] = (keyword.value, names)
-    ret = returns[0]
-    assert ret.value is not None
-    inner = _Resolver(function.scopes, ret.lineno, module, names.project, function.owner, arguments)
-    return ret.value, inner
+    return arguments
 
 
 def _own_nodes(node: ast.AST) -> list[ast.AST]:
