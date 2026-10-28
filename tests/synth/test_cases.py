@@ -231,6 +231,7 @@ def test_json_report(tmp_path: Path) -> None:
             "source": "t.py:2",
             "values": {"ticket": "App crashes"},
             "complete": True,
+            "generated_by": None,
             "messages": [
                 {"role": "system", "content": "Pick one of: bug, feature."},
                 {"role": "user", "content": "Ticket: App crashes"},

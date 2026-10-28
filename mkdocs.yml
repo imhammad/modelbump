@@ -106,6 +106,7 @@ nav:
       - adr/0048-find-llm-calls-and-prompt-templates.md
       - adr/0049-follow-prompts-across-files-classes-and-functions.md
       - adr/0050-test-inputs-from-the-apps-own-callers.md
+      - adr/0051-generated-test-inputs-from-a-local-model.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

@@ -54,6 +54,8 @@ class TestCase:
     """Where the values come from: ``tests/test_support.py:12``."""
     values: tuple[tuple[str, str], ...]
     """The call site's slots that got a value, with the value, in slot order."""
+    generated_by: str | None = None
+    """The model that wrote the values (ADR 0051), or None for values from the app's code."""
 
     __test__ = False  # not a pytest test class
 

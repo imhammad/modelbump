@@ -44,6 +44,7 @@ from modelbump.stats import (
 )
 from modelbump.synth import CallSiteResult, find_call_sites
 from modelbump.synth.cases import CaseResult, SiteCases, find_cases
+from modelbump.synth.generate import DEFAULT_GENERATOR, add_generated
 from modelbump.synth.report import CASE_RENDERERS, PromptFormat, cases_summary
 from modelbump.synth.report import RENDERERS as PROMPT_RENDERERS
 from modelbump.synth.report import summary_line as prompts_summary
@@ -252,12 +253,33 @@ def cases(
         Path | None,
         typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
     ] = None,
+    generate: Annotated[
+        int,
+        typer.Option(
+            min=0,
+            help="Have a model write inputs until each call with slots has this many cases.",
+        ),
+    ] = 0,
+    generator: Annotated[
+        str,
+        typer.Option(help="The model that writes inputs, as endpoint/model."),
+    ] = DEFAULT_GENERATOR,
+    budget_requests: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop after this many requests to the writer model."),
+    ] = None,
 ) -> None:
-    """Find test inputs for each LLM call in the values the app's own tests and code pass in."""
+    """Find test inputs for each LLM call: from the app's own tests and code, then generated.
+
+    With --generate N, a model (local Qwen 2.5 by default) writes inputs for the
+    calls that have fewer than N cases. Generated cases say which model wrote them.
+    """
     result = find_cases(path, exclude or (), skip_tests)
     if model is not None:
         kept: tuple[SiteCases, ...] = tuple(s for s in result.sites if s.site.model == model)
         result = CaseResult(kept, result.files_read, result.unparsed)
+    if generate > 0:
+        result = _generate_cases(result, generate, generator, budget_requests)
     rendered = CASE_RENDERERS[output_format](result)
     if output is None:
         typer.echo(rendered, nl=False)
@@ -265,6 +287,42 @@ def cases(
         output.write_text(rendered, encoding="utf-8")
         typer.echo(f"Wrote {output_format.value} report to {output}.")
         typer.echo(cases_summary(result))
+
+
+def _generate_cases(
+    result: CaseResult, count: int, generator: str, budget_requests: int | None
+) -> CaseResult:
+    """Run the writer model for `cases --generate`, with the cache and a budget."""
+    try:
+        endpoint, _ = resolve_model(generator)
+        probe = pin_versions([ChatRequest.ask(generator, "version")])[0]
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    except RunnerError as error:
+        _print_error(error, generator)
+        raise typer.Exit(code=1) from error
+    if not endpoint.local:
+        typer.echo(
+            f"Note: {endpoint.name} is a free cloud tier. The app's prompts leave this machine "
+            "and may be kept or read by the provider. Never send private code.",
+            err=True,
+        )
+    cache = ResponseCache()
+    budget = Budget(max_requests=budget_requests)
+    runner = Runner(cache=cache, budget=budget)
+    try:
+        done = asyncio.run(add_generated(result, runner, count, generator, probe.model_version))
+    finally:
+        cache.close()
+    typer.echo(
+        f"Asked {generator} for inputs for {done.asked} {'call' if done.asked == 1 else 'calls'}: "
+        f"{done.added} generated {'case' if done.added == 1 else 'cases'}. {budget.summary()}",
+        err=True,
+    )
+    for site, reason in done.skipped:
+        typer.echo(f"  {site.path}:{site.line}: {reason}", err=True)
+    return done.result
 
 
 @app.command()

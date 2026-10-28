@@ -92,8 +92,10 @@ def cases_summary(result: CaseResult) -> str:
     with_cases = sum(bool(s.cases) for s in result.sites)
     cases = result.cases
     complete = sum(c.complete for c in cases)
+    generated = sum(c.generated_by is not None for c in cases)
+    made = f", {generated} generated" if generated else ""
     line = (
-        f"Found {len(cases)} test {_plural(len(cases), 'case')} ({complete} complete) "
+        f"Found {len(cases)} test {_plural(len(cases), 'case')} ({complete} complete{made}) "
         f"for {with_cases} of {calls} LLM {_plural(calls, 'call')}."
     )
     fixed = sum(_is_fixed(s.site) for s in result.sites)
@@ -156,6 +158,7 @@ def _case_json(case: TestCase) -> dict[str, object]:
         "source": case.source,
         "values": dict(case.values),
         "complete": case.complete,
+        "generated_by": case.generated_by,
     }
     if case.complete:
         data["messages"] = [{"role": r, "content": text} for r, text in case.messages]
