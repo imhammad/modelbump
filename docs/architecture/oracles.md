@@ -11,6 +11,8 @@ An oracle decides whether an answer still does the job. In a migration, the old 
 | `label` | the prompt lists the allowed answers ("one label: bug, feature, question", "yes or no") | one of the labels, same label as before |
 | `text` | anything else | not empty, not a refusal, length like before, keeps list and code format, keeps a word or sentence limit in the prompt |
 
+In `modelbump test`, an LLM judge also reads each free-text answer and decides its score ([ADR 0054](../adr/0054-llm-judge-for-free-text.md)). See [Judging free text](#judging-free-text) below.
+
 ```console
 $ modelbump oracles tests/fixtures/prompt-demo
 bot.py:14  openai_chat  text
@@ -41,8 +43,12 @@ result.failed  # ("has total",)
 
 The answers that build the reference are kept apart from the answers that are compared, so the old model is not graded on its own reference. [`modelbump test`](suite.md) does this for every case.
 
+## Judging free text
+
+Property checks cannot tell a wrong summary from a right one. So `modelbump test` sends each free-text answer to a third model, `ollama/llama3.1:8b` by default (`--judge`, or `--no-judge` to turn it off). The judge sees the app's prompt, the old model's first reference answer and the answer to check, but not which model wrote it. It replies PASS or FAIL, and that sets the score (1 or 0). An empty answer or a refusal scores 0 whatever the judge says. The property checks stay in the report to explain a FAIL.
+
 ## Limits (for now)
 
-- Free text gets only property checks. An LLM judge, calibrated against hand labels, comes next.
+- The judge's agreement with people is not measured yet. That is the calibration step, with about 200 hand labels.
 - Tool calls are not scored.
 - A label list filled in at run time (`one of: {labels}`) is not read, so that call falls back to text.

@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import cast
 
-from modelbump.oracles import Reference, Score, build_reference, score
+from modelbump.oracles import OutputKind, Reference, Score, build_reference, score
+from modelbump.oracles.judge import judge_request, parse_verdict, with_judge
 from modelbump.runner import ChatRequest, ChatResult, Message, Runner, RunnerError
 from modelbump.runner.types import Role
 from modelbump.stats import (
@@ -65,6 +66,9 @@ class Settings:
     new_think: str | None = None
     old_version: str = ""
     new_version: str = ""
+    judge: str | None = None
+    """The model that judges free-text answers (ADR 0054), or None for property checks only."""
+    judge_version: str = ""
 
     def __post_init__(self) -> None:
         if self.runs < 1:
@@ -87,6 +91,8 @@ class Answer:
     sample: int
     text: str
     score: Score
+    judge: str | None = None
+    """``PASS``, ``FAIL`` or ``unclear`` when a judge read the answer, else None."""
 
 
 @dataclass(slots=True)
@@ -95,6 +101,7 @@ class CaseRun:
 
     case: SuiteCase
     reference: Reference | None = None
+    reference_answers: list[str] = field(default_factory=list)
     old: list[Answer] = field(default_factory=list)
     new: list[Answer] = field(default_factory=list)
     verdict: Verdict = Verdict.INCONCLUSIVE
@@ -162,7 +169,34 @@ def _texts(outcomes: Sequence[ChatResult | RunnerError]) -> list[str]:
 async def _set_reference(run: CaseRun, runner: Runner, settings: Settings) -> None:
     requests = [request(run.case, settings, "old", i) for i in range(settings.reference)]
     answers = _texts(await runner.run_each(requests))
+    run.reference_answers = answers
     run.reference = build_reference(run.case.oracle, answers, run.case.prompt)
+
+
+def judged(run: CaseRun, settings: Settings) -> bool:
+    """True when this case's answers go to the judge: free text, with a judge set."""
+    return settings.judge is not None and run.case.oracle.kind is OutputKind.TEXT
+
+
+async def _judge(
+    run: CaseRun, runner: Runner, settings: Settings, answers: list[Answer]
+) -> list[Answer]:
+    """The answers with the judge's verdict in their score (free-text cases only)."""
+    if not judged(run, settings) or not answers:
+        return answers
+    assert settings.judge is not None
+    reference = run.reference_answers[0]
+    requests = [
+        judge_request(run.case.messages, reference, a.text, settings.judge, settings.judge_version)
+        for a in answers
+    ]
+    replies = _texts(await runner.run_each(requests))
+    out = []
+    for answer, reply in zip(answers, replies, strict=True):
+        verdict = parse_verdict(reply)
+        label = "unclear" if verdict is None else ("PASS" if verdict else "FAIL")
+        out.append(Answer(answer.sample, answer.text, with_judge(answer.score, verdict), label))
+    return out
 
 
 def _scored(run: CaseRun, samples: Sequence[int], texts: Sequence[str]) -> list[Answer]:
@@ -181,11 +215,12 @@ async def _fixed(runs: Sequence[CaseRun], runner: Runner, settings: Settings) ->
             requests = [request(run.case, settings, "old", s) for s in samples]
             requests += [request(run.case, settings, "new", s) for s in samples]
             texts = _texts(await runner.run_each(requests))
+            answers = await _judge(run, runner, settings, _scored(run, samples * 2, texts))
         except RunnerError as error:
             run.error = str(error)
             continue
-        run.old = _scored(run, samples, texts[: len(samples)])
-        run.new = _scored(run, samples, texts[len(samples) :])
+        run.old = answers[: len(samples)]
+        run.new = answers[len(samples) :]
     done = [run for run in runs if run.error is None]
     k = settings.runs
     passes = [
@@ -219,8 +254,9 @@ async def _sequential(runs: Sequence[CaseRun], runner: Runner, settings: Setting
                     request(run.case, settings, "new", sample),
                 ]
                 old_text, new_text = _texts(await runner.run_each(pair))
-                (old,) = _scored(run, [sample], [old_text])
-                (new,) = _scored(run, [sample], [new_text])
+                old, new = await _judge(
+                    run, runner, settings, _scored(run, [sample, sample], [old_text, new_text])
+                )
                 run.old.append(old)
                 run.new.append(new)
                 test.add(old.score.value, new.score.value)

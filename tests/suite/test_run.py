@@ -247,5 +247,64 @@ def test_json_report_has_every_answer() -> None:
         "sample": 52,
         "score": 0.0,
         "failed": ["same label as before (bug)"],
+        "judge": None,
         "text": "feature",
     }
+
+
+# --- The judge (ADR 0054) --------------------------------------------------------
+
+JUDGE = "ollama/judge"
+
+
+def judging(new_is_wrong: bool, unclear: bool = False) -> Answers:
+    """Both models write similar text; the judge fails the new model's answers."""
+
+    def answer(model: str, prompt: str, seed: int) -> str:
+        if model == "judge":
+            if unclear:
+                return "Hard to say."
+            return "FAIL" if new_is_wrong and "from new" in prompt else "PASS"
+        return f"A fine answer from {model}, take {seed}."
+
+    return answer
+
+
+def test_judge_fails_new_text_answers_and_the_case_regresses() -> None:
+    suite = Suite((make_case("long", TEXT), make_case("crash")))
+    result, seen = run(suite, judging(new_is_wrong=True), runs=50, judge=JUDGE)
+    text, label = result.cases
+    assert text.verdict is Verdict.REGRESSED
+    assert {a.judge for a in text.new} == {"FAIL"}
+    assert {a.judge for a in text.old} == {"PASS"}
+    assert text.new_failures[0] == ("judge: as good as the reference", 50)
+    # The label case is not sent to the judge.
+    assert label.new[0].judge is None
+    assert sum(body["model"] == "judge" for body in seen) == 100
+    # The judge reads the first reference answer, never the answer's model name.
+    judge_prompt = next(b for b in seen if b["model"] == "judge")["messages"][1]["content"]
+    assert "## Reference answer\nA fine answer from old, take 0." in judge_prompt
+    assert "ollama/" not in judge_prompt
+    assert "free text judged by ollama/judge" in render_run_text(result).splitlines()[0]
+
+
+def test_judge_in_sequential_rounds() -> None:
+    suite = Suite((make_case("long", TEXT),))
+    result, _ = run(
+        suite, judging(new_is_wrong=True), runs=200, method=Method.SEQUENTIAL, judge=JUDGE
+    )
+    (text,) = result.cases
+    assert text.verdict is Verdict.REGRESSED
+    assert len(text.new) < 200
+
+
+def test_unclear_judge_keeps_property_scores() -> None:
+    result, _ = run(
+        Suite((make_case("long", TEXT),)), judging(False, unclear=True), runs=50, judge=JUDGE
+    )
+    (text,) = result.cases
+    assert {a.judge for a in text.new} == {"unclear"}
+    assert text.verdict is Verdict.EQUIVALENT
+    data = json.loads(render_run_json(result))
+    assert data["judge"] == JUDGE
+    assert data["cases"][0]["answers"][0]["judge"] == "unclear"

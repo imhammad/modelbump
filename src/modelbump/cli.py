@@ -10,6 +10,8 @@ from typing import Annotated
 import typer
 
 from modelbump import __version__
+from modelbump.oracles import OutputKind
+from modelbump.oracles.judge import DEFAULT_JUDGE
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
 from modelbump.runner import (
@@ -427,6 +429,14 @@ def test_models(
     max_tokens: Annotated[
         int, typer.Option(min=1, help="Longest answer, in tokens.")
     ] = DEFAULT_MAX_TOKENS,
+    judge: Annotated[
+        str,
+        typer.Option(help="The model that judges free-text answers, as endpoint/model."),
+    ] = DEFAULT_JUDGE,
+    no_judge: Annotated[
+        bool,
+        typer.Option("--no-judge", help="Check free text with property checks only."),
+    ] = False,
     budget_requests: Annotated[
         int | None,
         typer.Option(min=1, help="Stop after this many requests (cached answers are free)."),
@@ -457,8 +467,11 @@ def test_models(
             old_think=from_think,
             new_think=to_think,
         )
-        endpoints = [resolve_model(model_name)[0] for model_name in (old, new)]
-        probes = pin_versions([ChatRequest.ask(old, "version"), ChatRequest.ask(new, "version")])
+        has_text = any(c.oracle.kind is OutputKind.TEXT for c in cases_to_run.cases)
+        judge_model = None if no_judge or not has_text else judge
+        names = [old, new] + ([judge_model] if judge_model is not None else [])
+        endpoints = [resolve_model(model_name)[0] for model_name in names]
+        probes = pin_versions([ChatRequest.ask(name, "version") for name in names])
     except ValueError as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -475,7 +488,11 @@ def test_models(
             err=True,
         )
     settings = replace(
-        settings, old_version=probes[0].model_version, new_version=probes[1].model_version
+        settings,
+        old_version=probes[0].model_version,
+        new_version=probes[1].model_version,
+        judge=judge_model,
+        judge_version=probes[2].model_version if judge_model is not None else "",
     )
     cache = ResponseCache()
     budget = Budget(max_requests=budget_requests)

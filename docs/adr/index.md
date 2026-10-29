@@ -59,3 +59,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0051](0051-generated-test-inputs-from-a-local-model.md) | Have a local model write the missing test inputs, and mark every one as generated | Accepted |
 | [0052](0052-oracles-by-output-type.md) | Check answers against the old model's answers, with an oracle picked by output type | Accepted |
 | [0053](0053-suite-file-and-modelbump-test.md) | Write the suite to a file, then run it on both models with `modelbump test` | Accepted |
+| [0054](0054-llm-judge-for-free-text.md) | Judge free-text answers with a third local model, against an old reference answer | Accepted |

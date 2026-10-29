@@ -111,6 +111,7 @@ nav:
       - adr/0051-generated-test-inputs-from-a-local-model.md
       - adr/0052-oracles-by-output-type.md
       - adr/0053-suite-file-and-modelbump-test.md
+      - adr/0054-llm-judge-for-free-text.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

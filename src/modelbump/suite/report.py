@@ -25,7 +25,8 @@ def method_line(result: SuiteRun) -> str:
     return (
         f"Compared {s.old} -> {s.new} on {cases} test {'case' if cases == 1 else 'cases'}: "
         f"{how} (q {s.q:.2f}, margin {s.margin:.2f}), "
-        f"{s.reference} reference {'answer' if s.reference == 1 else 'answers'} per case."
+        f"{s.reference} reference {'answer' if s.reference == 1 else 'answers'} per case"
+        + (f", free text judged by {s.judge}." if s.judge is not None else ".")
     )
 
 
@@ -82,6 +83,8 @@ def render_run_json(result: SuiteRun) -> str:
         "margin": s.margin,
         "temperature": s.temperature,
         "max_tokens": s.max_tokens,
+        "judge": s.judge,
+        "judge_version": s.judge_version,
         "counts": {v.value: result.counts[v] for v in _ORDER},
         "cases": [
             {
@@ -99,6 +102,7 @@ def render_run_json(result: SuiteRun) -> str:
                         "sample": answer.sample,
                         "score": round(answer.score.value, 4),
                         "failed": list(answer.score.failed),
+                        "judge": answer.judge,
                         "text": answer.text,
                     }
                     for which, answers in (("old", run.old), ("new", run.new))

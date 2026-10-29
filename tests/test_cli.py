@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from modelbump import __version__
 from modelbump.cli import app
-from modelbump.runner import Runner, RunnerError
+from modelbump.runner import ChatRequest, Runner, RunnerError
 
 runner = CliRunner()
 
@@ -732,10 +732,13 @@ def _fake_models(monkeypatch: pytest.MonkeyPatch, broken: str = "") -> list[dict
         body = json.loads(request.content)
         seen.append(body)
         prompt = body["messages"][-1]["content"]
-        if prompt.startswith("Ticket"):
+        if body["messages"][0]["content"].startswith("You grade"):
+            text = "FAIL" if "WRONG" in prompt else "PASS"  # the judge
+        elif prompt.startswith("Ticket"):
             text = "feature" if broken and broken in prompt and "new" in body["model"] else "bug"
         else:
-            text = "A short answer, two sentences at most. Done."
+            # Every answer differs, so each one is a new question for the judge.
+            text = f"A short answer from {body['model']}, number {body['seed']}. Done."
         return httpx.Response(
             200,
             json={
@@ -819,13 +822,19 @@ def test_test_passes_when_nothing_regressed(
     lines = result.stdout.splitlines()
     assert lines[0] == (
         "Compared ollama/old -> ollama/new on 5 test cases: fixed k=50 + BH "
-        "(q 0.05, margin 0.10), 3 reference answers per case."
+        "(q 0.05, margin 0.10), 3 reference answers per case, "
+        "free text judged by ollama/llama3.1:8b."
     )
     assert lines[-1] == "Result: 0 regressed, 0 inconclusive, 5 equivalent, 0 improved."
-    assert len(seen) == 5 * (3 + 50 + 50)
+    # 5 cases x (3 reference + 50 + 50), and the judge reads the 100 answers of each
+    # of the 2 free-text cases.
+    assert len(seen) == 5 * (3 + 50 + 50) + 2 * 100
+    judged = [body for body in seen if body["model"] == "llama3.1:8b"]
+    assert len(judged) == 200
+    assert {body["temperature"] for body in judged} == {0.0}
     new = [body for body in seen if body["model"] == "new"]
     assert {body["reasoning_effort"] for body in new} == {"none"}
-    assert "Spent: 515 requests" in result.stderr
+    assert "Spent: 715 requests" in result.stderr
     # A second run reads every answer from the cache.
     again = runner.invoke(
         app,
@@ -948,3 +957,42 @@ def test_test_warns_before_a_cloud_tier(monkeypatch: pytest.MonkeyPatch, tmp_pat
         ],
     )
     assert "The app's prompts leave this machine" in result.stderr
+
+
+def test_test_without_the_judge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    seen = _fake_models(monkeypatch)
+    result = runner.invoke(
+        app,
+        ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new", "--no-judge"],
+    )
+    assert result.exit_code == 0
+    assert result.stdout.splitlines()[0].endswith("3 reference answers per case.")
+    assert len(seen) == 5 * (3 + 50 + 50)
+
+
+def test_test_skips_the_judge_when_no_case_is_free_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    out = tmp_path / "suite.json"
+    assert (
+        runner.invoke(
+            app, ["suite", str(DEMO), "--model", "gpt-4o-mini", "--output", str(out)]
+        ).exit_code
+        == 0
+    )
+    data = json.loads(out.read_text(encoding="utf-8"))
+    data["cases"] = [c for c in data["cases"] if c["oracle"]["kind"] == "label"]
+    out.write_text(json.dumps(data), encoding="utf-8")
+    asked: list[list[str]] = []
+
+    def pin(requests: list[ChatRequest]) -> list[ChatRequest]:
+        asked.append([r.model for r in requests])
+        return list(requests)
+
+    monkeypatch.setattr("modelbump.cli.pin_versions", pin)
+    seen = _fake_models(monkeypatch)
+    result = runner.invoke(app, ["test", str(out), "--from", "ollama/old", "--to", "ollama/new"])
+    assert result.exit_code == 0
+    assert asked == [["ollama/old", "ollama/new"]]
+    assert all(body["model"] != "llama3.1:8b" for body in seen)
