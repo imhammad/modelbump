@@ -11,6 +11,9 @@ import typer
 
 from modelbump import __version__
 from modelbump.oracles import OutputKind
+from modelbump.oracles.calibrate import DEFAULT_SEED as DEFAULT_SHEET_SEED
+from modelbump.oracles.calibrate import DEFAULT_SIZE as DEFAULT_SHEET_SIZE
+from modelbump.oracles.calibrate import agreement, agreement_lines, make_sheet
 from modelbump.oracles.judge import DEFAULT_JUDGE
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
@@ -730,6 +733,68 @@ def cache_clear(
     finally:
         cache.close()
     typer.echo(f"Deleted {deleted} stored answers.")
+
+
+judge_app = typer.Typer(
+    help="Check the free-text judge against your own labels.", no_args_is_help=True
+)
+app.add_typer(judge_app, name="judge")
+
+
+@judge_app.command("sheet")
+def judge_sheet(
+    report: Annotated[
+        Path,
+        typer.Argument(
+            help="A `modelbump test --format json` report.", exists=True, dir_okay=False
+        ),
+    ],
+    output: Annotated[
+        Path, typer.Option(help="The blind sheet to label (CSV).", dir_okay=False)
+    ] = Path("judge-sheet.csv"),
+    key: Annotated[
+        Path,
+        typer.Option(help="What the sheet hides: models and judge verdicts.", dir_okay=False),
+    ] = Path("judge-key.json"),
+    size: Annotated[
+        int, typer.Option(min=2, help="Answers to draw, half judged PASS, half FAIL.")
+    ] = DEFAULT_SHEET_SIZE,
+    seed: Annotated[int, typer.Option(help="Seed for drawing and shuffling.")] = DEFAULT_SHEET_SEED,
+) -> None:
+    """Write a blind sheet of judged answers for you to label PASS or FAIL."""
+    try:
+        made = make_sheet(report, output, key, size, seed)
+    except (ValueError, KeyError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(
+        f"Wrote {made.rows} rows ({made.answers} answers: {made.drawn['PASS']} judged PASS, "
+        f"{made.drawn['FAIL']} FAIL) to {output}, and the key to {key}."
+    )
+    typer.echo(
+        f"The report had {made.available['PASS']} PASS and {made.available['FAIL']} FAIL. "
+        "Fill in your_label with PASS or FAIL, without looking at the key."
+    )
+
+
+@judge_app.command("agreement")
+def judge_agreement(
+    sheet: Annotated[
+        Path, typer.Argument(help="The labelled sheet (CSV).", exists=True, dir_okay=False)
+    ],
+    key: Annotated[
+        Path,
+        typer.Argument(help="The key from `modelbump judge sheet`.", exists=True, dir_okay=False),
+    ],
+) -> None:
+    """How often the judge agrees with your labels, and pass rates corrected for it."""
+    try:
+        result = agreement(sheet, key)
+    except (ValueError, KeyError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    for line in agreement_lines(result):
+        typer.echo(line)
 
 
 stats_app = typer.Typer(

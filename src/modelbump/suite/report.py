@@ -91,6 +91,8 @@ def render_run_json(result: SuiteRun) -> str:
                 "id": run.case.id,
                 "kind": run.case.oracle.kind.value,
                 "source": run.case.source,
+                "messages": [{"role": r, "content": t} for r, t in run.case.messages],
+                "reference_answer": run.reference_answers[0] if run.reference_answers else None,
                 "verdict": None if run.error is not None else run.verdict.value,
                 "error": run.error,
                 "old_mean": round(run.old_mean, 4),

@@ -996,3 +996,72 @@ def test_test_skips_the_judge_when_no_case_is_free_text(
     assert result.exit_code == 0
     assert asked == [["ollama/old", "ollama/new"]]
     assert all(body["model"] != "llama3.1:8b" for body in seen)
+
+
+def test_judge_sheet_and_agreement_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch)
+    report = tmp_path / "report.json"
+    result = runner.invoke(
+        app,
+        [
+            "test",
+            str(suite_file),
+            "--from",
+            "ollama/old",
+            "--to",
+            "ollama/new",
+            "--format",
+            "json",
+            "--output",
+            str(report),
+        ],
+    )
+    assert result.exit_code == 0
+    case = next(
+        c
+        for c in json.loads(report.read_text(encoding="utf-8"))["cases"]
+        if c["id"] == "bot.py:14#1"
+    )
+    assert case["reference_answer"] == "A short answer from old, number 0. Done."
+    assert case["messages"][0]["role"] == "system"
+    sheet, key = tmp_path / "sheet.csv", tmp_path / "key.json"
+    made = runner.invoke(
+        app,
+        ["judge", "sheet", str(report), "--output", str(sheet), "--key", str(key), "--size", "6"],
+    )
+    assert made.exit_code == 0, made.output
+    # The fake judge passes everything, so the FAIL half is filled with PASSes.
+    assert made.stdout.splitlines() == [
+        f"Wrote 6 rows (6 answers: 6 judged PASS, 0 FAIL) to {sheet}, and the key to {key}.",
+        "The report had 200 PASS and 0 FAIL. Fill in your_label with PASS or FAIL, "
+        "without looking at the key.",
+    ]
+    text = sheet.read_text(encoding="utf-8")
+    assert text.splitlines()[0] == "item,prompt,reference,answer,your_label,note"
+    labelled = text.replace(",,\n", ",PASS,\n").replace(",,\r\n", ",PASS,\r\n")
+    sheet.write_text(labelled, encoding="utf-8")
+    checked = runner.invoke(app, ["judge", "agreement", str(sheet), str(key)])
+    assert checked.exit_code == 0, checked.output
+    assert checked.stdout.splitlines()[:3] == [
+        "Labelled 6 answers.",
+        "When the judge said PASS, you agreed 100% (6/6, 95% CI 52%-100%).",
+        "When the judge said FAIL, you agreed no answers.",
+    ]
+
+
+def test_judge_commands_report_bad_files(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("[]", encoding="utf-8")
+    result = runner.invoke(app, ["judge", "sheet", str(bad), "--output", str(tmp_path / "s.csv")])
+    assert result.exit_code == 2
+    assert "is not a `modelbump test --format json` report" in result.stderr
+    sheet = tmp_path / "s.csv"
+    sheet.write_text("item,your_label\n", encoding="utf-8")
+    key = tmp_path / "k.json"
+    key.write_text('{"version": 1, "items": [], "population": {}}', encoding="utf-8")
+    result = runner.invoke(app, ["judge", "agreement", str(sheet), str(key)])
+    assert result.exit_code == 2
+    assert "has no labels yet" in result.stderr

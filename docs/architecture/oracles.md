@@ -49,6 +49,29 @@ Property checks cannot tell a wrong summary from a right one. So `modelbump test
 
 ## Limits (for now)
 
-- The judge's agreement with people is not measured yet. That is the calibration step, with about 200 hand labels.
+- The judge's agreement with people is measured with `modelbump judge` (below). The 200 labels for the paper come from the benchmark corpus.
 - Tool calls are not scored.
 - A label list filled in at run time (`one of: {labels}`) is not read, so that call falls back to text.
+
+## Checking the judge
+
+How far the judge can be trusted is measured against a person's labels ([ADR 0055](../adr/0055-check-the-judge-against-hand-labels.md)):
+
+```console
+$ modelbump test demo-suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none --format json --output report.json
+$ modelbump judge sheet report.json --size 40 --output judge-sheet.csv --key judge-key.json
+Wrote 40 rows (40 answers: 20 judged PASS, 20 FAIL) to judge-sheet.csv, and the key to judge-key.json.
+```
+
+The sheet shows the prompt, the reference answer and the answer, with no model name and no judge verdict. Fill in `your_label` with PASS or FAIL without opening the key, then:
+
+```console
+$ modelbump judge agreement judge-sheet.csv judge-key.json
+Labelled 40 answers.
+When the judge said PASS, you agreed 95% (19/20, 95% CI ...).
+When the judge said FAIL, you agreed 60% (12/20, 95% CI ...).
+...
+ollama/qwen3:8b: judge pass rate 78%, corrected 84% (range ...)
+```
+
+The numbers above only show the format. The corrected pass rate assumes that, given its verdict, the judge is as often wrong on one model's answers as on the other's. The per-model lines show whether that holds.
