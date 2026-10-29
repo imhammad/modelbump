@@ -45,3 +45,34 @@ Next steps run suites on these apps and draw the ~200 hand labels from those run
 - The snapshots are old code (2023 to 2026), so some calls use old SDK forms. Calls such as `openai.ChatCompletion.create(model=..., messages=...)` are still found, as other calls with `model=` and `messages=`.
 - Prompts kept in `.txt` or `.md` files are not in the snapshots (the scanner does not read them). Such prompts are slots already, so nothing is lost that the synthesizer could read.
 - Python only: apps in TypeScript and other languages are left out and counted.
+
+## Results (29 October 2026)
+
+`uv run python -m research.corpus.build` reused the scanner evaluation's 100 snapshots and downloaded 117 more. It screened 223 of the 308 eligible commits before reaching 40 apps:
+
+| Screening | Snapshots |
+|---|---|
+| Joined the corpus | 40 |
+| No Python files | 119 |
+| No LLM call found | 36 |
+| No call with written prompt text | 22 |
+| Commit no longer on GitHub (404) | 5 |
+| Repository too large | 1 |
+
+What the synthesizer finds in the 40 apps (tests left out of the call list):
+
+| | Count |
+|---|---|
+| Python files | 5,566 |
+| LLM calls | 356 |
+| with written prompt text | 187 |
+| complete (every message read, each with text) | 146 |
+| fixed prompts (complete, no slots) | 33 |
+| with slots to fill | 243 |
+| with test inputs from the app's own code | 11 (in 4 apps) |
+
+Calls by API: OpenAI chat 131, other `model=` + `messages=` calls 88, Anthropic 76, Gemini 49, OpenAI Responses 7, OpenAI completions 4, LiteLLM 1.
+
+Oracles: **224 text, 98 JSON, 34 tools and 0 label**. 31 apps have a free-text call, 28 a JSON call and 14 a tool call. No app in a random sample of 40 asks for a label from a list in a form the oracle rules detect, so free text, and with it the judge, carries most of the weight. As on the five hand-picked apps, the apps' own code gives test inputs for very few calls (11 of 356), so generated inputs ([ADR 0051](0051-generated-test-inputs-from-a-local-model.md)) are what make most cases.
+
+Most of the 40 are small projects (personal bots, agents, back ends), which is what a random draw from GitHub migrations gives, not a choice of well-known apps.

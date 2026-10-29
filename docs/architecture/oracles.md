@@ -49,7 +49,7 @@ Property checks cannot tell a wrong summary from a right one. So `modelbump test
 
 ## Limits (for now)
 
-- The judge's agreement with people is measured with `modelbump judge` (below). The 200 labels for the paper come from the benchmark corpus.
+- The judge's agreement with people is measured with `modelbump judge` (below). The 200 labels for the paper come from the benchmark corpus ([ADR 0057](../adr/0057-benchmark-corpus-from-migration-snapshots.md)).
 - Tool calls are not scored.
 - A label list filled in at run time (`one of: {labels}`) is not read, so that call falls back to text.
 
@@ -77,3 +77,26 @@ ollama/qwen3:8b: judge pass rate 78%, corrected 84% (range ...)
 To test a change to the judge without reusing labels it was tuned on, compare old labels with the re-judged run (`--report NEW_REPORT`, a check only), then draw a fresh sheet that leaves out answers already labelled (`modelbump judge sheet NEW_REPORT --exclude-key OLD_KEY`). See [ADR 0056](../adr/0056-bigger-judge-and-no-invented-facts.md).
 
 The numbers above only show the format. The corrected pass rate assumes that, given its verdict, the judge is as often wrong on one model's answers as on the other's. The per-model lines show whether that holds.
+
+## Judge probes
+
+Hand labels show how often the judge is right on the answers models happen to give, but each kind of mistake turns up only a few times. Probes test the kinds directly ([ADR 0058](../adr/0058-judge-probes.md)). A local model (`ollama/qwen2.5:7b`, `--breaker`) edits each free-text case's reference answer in one known way, and the judge grades the edit against the unchanged reference:
+
+| Kind | The edit | A good judge says |
+|---|---|---|
+| `changed_source` | Word for word, except where it sends the reader (or one name or number) | FAIL |
+| `flipped_meaning` | Mostly the same words, wrong meaning | FAIL |
+| `missing_fact` | The most important fact left out | FAIL |
+| `hedged_invention` | One invented detail, written vaguely or as an option | FAIL |
+| `paraphrase` | Other words, same meaning (a control) | PASS |
+
+```console
+$ modelbump judge probes report.json --output probe-sheet.csv --key probe-key.json
+Wrote 40 probes for 4 free-text cases to probe-sheet.csv, and the key to probe-key.json.
+$ modelbump judge probe-check probe-sheet.csv probe-key.json
+changed_source: 8 labelled, 8 really wrong by you; judge failed 5/8 (...)
+...
+All broken kinds: judge caught ...
+```
+
+The breaker can get an edit wrong too, so you label every probe blind, like the judge sheet, and only probes you confirm count. The numbers above only show the format.

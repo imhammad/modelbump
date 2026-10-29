@@ -1,7 +1,9 @@
 """Command-line interface for ModelBump."""
 
 import asyncio
+import json
 import random
+from collections import Counter
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +17,15 @@ from modelbump.oracles.calibrate import DEFAULT_SEED as DEFAULT_SHEET_SEED
 from modelbump.oracles.calibrate import DEFAULT_SIZE as DEFAULT_SHEET_SIZE
 from modelbump.oracles.calibrate import agreement, agreement_lines, make_sheet
 from modelbump.oracles.judge import DEFAULT_JUDGE
+from modelbump.oracles.probes import (
+    DEFAULT_BREAKER,
+    DEFAULT_PER_KIND,
+    check_probes,
+    make_probes,
+    probe_lines,
+    write_probes,
+)
+from modelbump.oracles.probes import DEFAULT_SEED as DEFAULT_PROBE_SEED
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
 from modelbump.runner import (
@@ -812,6 +823,124 @@ def judge_agreement(
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
     for line in agreement_lines(result):
+        typer.echo(line)
+
+
+@judge_app.command("probes")
+def judge_probes(
+    report: Annotated[
+        Path,
+        typer.Argument(
+            help="A `modelbump test --format json` report.", exists=True, dir_okay=False
+        ),
+    ],
+    output: Annotated[
+        Path, typer.Option(help="The blind probe sheet to label (CSV).", dir_okay=False)
+    ] = Path("probe-sheet.csv"),
+    key: Annotated[
+        Path,
+        typer.Option(help="What the sheet hides: each probe's kind and verdict.", dir_okay=False),
+    ] = Path("probe-key.json"),
+    breaker: Annotated[
+        str, typer.Option(help="The model that writes the probes, as endpoint/model.")
+    ] = DEFAULT_BREAKER,
+    judge: Annotated[
+        str, typer.Option(help="The judge to test, as endpoint/model.")
+    ] = DEFAULT_JUDGE,
+    per_kind: Annotated[
+        int, typer.Option(min=1, help="Probes of each kind per free-text case.")
+    ] = DEFAULT_PER_KIND,
+    seed: Annotated[int, typer.Option(help="Seed for shuffling the sheet.")] = DEFAULT_PROBE_SEED,
+    budget_requests: Annotated[
+        int | None,
+        typer.Option(min=1, help="Stop after this many requests (cached answers are free)."),
+    ] = None,
+) -> None:
+    """Break reference answers on purpose, judge them, and write a blind sheet to check."""
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("version") != 1 or "cases" not in data:
+            raise ValueError(f"{report} is not a `modelbump test --format json` report")
+        if any("reference_answer" not in case for case in data["cases"]):
+            raise ValueError(f"{report} is from an older ModelBump; run `modelbump test` again")
+        endpoints = [resolve_model(name)[0] for name in (breaker, judge)]
+        pinned = pin_versions([ChatRequest.ask(name, "version") for name in (breaker, judge)])
+    except (ValueError, RunnerError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    if not all(endpoint.local for endpoint in endpoints):
+        typer.echo(
+            "Note: a free cloud tier is in use. The app's prompts leave this machine "
+            "and may be kept or read by the provider. Never send private code.",
+            err=True,
+        )
+    cache = ResponseCache()
+    budget = Budget(max_requests=budget_requests)
+    runner = Runner(cache=cache, budget=budget)
+    try:
+        run = asyncio.run(
+            make_probes(
+                data,
+                runner,
+                breaker=breaker,
+                judge=judge,
+                judge_version=pinned[1].model_version,
+                per_kind=per_kind,
+            )
+        )
+    except RunnerError as error:
+        typer.echo(f"Error: {error}", err=True)
+        typer.echo("Answers so far are cached: run the same command again to continue.", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        cache.close()
+    if not run.probes:
+        typer.echo("Error: the report has no free-text cases with a reference answer.", err=True)
+        raise typer.Exit(code=2)
+    write_probes(
+        run,
+        data,
+        report,
+        output,
+        key,
+        breaker=breaker,
+        judge=judge,
+        judge_version=pinned[1].model_version,
+        per_kind=per_kind,
+        seed=seed,
+    )
+    verdicts = Counter(probe.judge for probe in run.probes)
+    typer.echo(
+        f"Wrote {len(run.probes)} probes for {run.cases} free-text cases to {output}, "
+        f"and the key to {key}."
+    )
+    if run.missing:
+        typer.echo(f"The breaker could not write: {dict(run.missing)}.")
+    typer.echo(
+        f"The judge said PASS {verdicts['PASS']}, FAIL {verdicts['FAIL']}"
+        + (f", unclear {verdicts['unclear']}." if verdicts["unclear"] else ".")
+    )
+    typer.echo("Fill in your_label with PASS or FAIL, without looking at the key.")
+    typer.echo(budget.summary(), err=True)
+
+
+@judge_app.command("probe-check")
+def judge_probe_check(
+    sheet: Annotated[
+        Path, typer.Argument(help="The labelled probe sheet (CSV).", exists=True, dir_okay=False)
+    ],
+    key: Annotated[
+        Path,
+        typer.Argument(help="The key from `modelbump judge probes`.", exists=True, dir_okay=False),
+    ],
+) -> None:
+    """Which kinds of broken answer the judge catches, checked against your labels."""
+    try:
+        result = check_probes(sheet, key)
+    except (ValueError, KeyError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    for line in probe_lines(result):
         typer.echo(line)
 
 

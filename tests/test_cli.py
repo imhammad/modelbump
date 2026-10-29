@@ -1,5 +1,6 @@
 """Smoke tests for the command-line interface."""
 
+import csv
 import json
 from pathlib import Path
 
@@ -1125,3 +1126,56 @@ def test_judge_fresh_sheet_and_rejudged_agreement(
     assert checked.exit_code == 0, checked.output
     assert checked.stdout.splitlines()[0] == "Judge: ollama/gemma3:12b"
     assert "Verdicts from another report" in checked.stdout
+
+
+def test_judge_probes_and_probe_check_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    seen = _fake_models(monkeypatch)
+    report = tmp_path / "report.json"
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new"]
+    assert runner.invoke(app, [*args, "--format", "json", "--output", str(report)]).exit_code == 0
+    sheet, key = tmp_path / "probes.csv", tmp_path / "probes.json"
+    made = runner.invoke(
+        app,
+        [
+            "judge",
+            "probes",
+            str(report),
+            "--output",
+            str(sheet),
+            "--key",
+            str(key),
+            "--per-kind",
+            "1",
+        ],
+    )
+    assert made.exit_code == 0, made.output
+    data = json.loads(key.read_text(encoding="utf-8"))
+    cases = data["cases"]
+    assert cases >= 1
+    assert made.stdout.splitlines() == [
+        f"Wrote {5 * cases} probes for {cases} free-text cases to {sheet}, and the key to {key}.",
+        f"The judge said PASS {5 * cases}, FAIL 0.",
+        "Fill in your_label with PASS or FAIL, without looking at the key.",
+    ]
+    breaker = [b for b in seen if "You edit answers" in json.dumps(b["messages"])]
+    assert len(breaker) == 5 * cases
+    assert {b["model"] for b in breaker} == {"qwen2.5:7b"}
+    with sheet.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    for row in rows:
+        row["your_label"] = "FAIL"
+    with sheet.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    checked = runner.invoke(app, ["judge", "probe-check", str(sheet), str(key)])
+    assert checked.exit_code == 0, checked.output
+    lines = checked.stdout.splitlines()
+    assert lines[0] == "Judge: ollama/gemma3:12b; probes written by ollama/qwen2.5:7b."
+    assert lines[-1].startswith(f"All broken kinds: judge caught 0/{4 * cases} (0%")
+    again = runner.invoke(app, ["judge", "probes", str(tmp_path / "suite.json")])
+    assert again.exit_code == 2
+    assert "is from an older ModelBump" in again.output or "not a" in again.output
