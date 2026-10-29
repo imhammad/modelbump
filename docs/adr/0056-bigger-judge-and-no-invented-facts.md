@@ -35,3 +35,28 @@ All 6 wrong PASSes failed for the same reason: the answer **states facts that ar
 - Changing the judge's model or instructions changes the cache key, so every free-text answer is judged again once. The compared answers are not asked again.
 - The judge used in each report is named in it, so results from the two judges are never mixed.
 - The pilot showed a judge with no false FAILs and many false PASSes. The fresh sheet will show whether the new judge trades some false PASSes for false FAILs.
+
+## Results (29 October 2026)
+
+On the demo suite (Qwen 2.5 7B to Qwen 3 8B, 50 runs), the new judge gave **3 REGRESSED and 6 EQUIVALENT** cases, where Llama 3.1 8B gave 7 EQUIVALENT and 2 INCONCLUSIVE.
+
+**Development check** on the pilot labels (`--report`): PASS agreed 82% (14 of 17), FAIL 100% (23 of 23).
+
+**Fresh blind sheet** (seed 2031, 40 answers never labelled before, drawn from 248 judge PASSes and 112 FAILs). This is the measurement:
+
+| | Agreed | 95% CI |
+|---|---|---|
+| Judge said PASS | 70% (14 of 20) | 48-85% |
+| Judge said FAIL | 95% (19 of 20) | 76-99% |
+
+Kappa on the sheet was 0.65, and the agreement weighted to the whole report was 78%. Corrected to the labels, Qwen 2.5 passes 63% (41-81%) of free-text answers and Qwen 3 passes 33% (20-53%), against the judge's own 90% and 43%. So the 3 REGRESSED verdicts are backed by the hand labels.
+
+The new judge failed every answer that added security claims, and four of the five that invented a reset method. The 6 wrong PASSes on the fresh sheet were of new kinds:
+
+- **A changed reference (3 answers).** The answer copies the reference almost word for word but sends the user somewhere else ("the Security section of our FAQ", which does not exist, instead of the privacy policy). The judge seems to go by overall similarity and miss the one changed detail.
+- **A hedged invention (1).** "Your email or account information" got through, while the plain "your registered email" was caught twice.
+- **Close but wrong summaries (2).** Same words as the thread, but the meaning is flipped ("the customer ordered late" instead of "the order is late") or the key fact is missing (that it ships tomorrow).
+
+The judge failed one answer that the labeller passed, as their closest call ("contact our support team").
+
+The false-PASS rate did not improve on fresh labels (70% before and after), and the intervals are wide with 20 answers per verdict and 4 prompts. The ~200 labels on the corpus will measure it properly, and the judge probes (next ADR after 0057) test these three kinds of mistake directly.
