@@ -45,7 +45,7 @@ The answers that build the reference are kept apart from the answers that are co
 
 ## Judging free text
 
-Property checks cannot tell a wrong summary from a right one. So `modelbump test` sends each free-text answer to a third model, `ollama/gemma3:12b` by default ([ADR 0056](../adr/0056-bigger-judge-and-no-invented-facts.md)) (`--judge`, or `--no-judge` to turn it off). The judge sees the app's prompt, the old model's first reference answer and the answer to check, but not which model wrote it. It replies PASS or FAIL, and that sets the score (1 or 0). An empty answer or a refusal scores 0 whatever the judge says. The property checks stay in the report to explain a FAIL.
+Property checks cannot tell a wrong summary from a right one. So `modelbump test` sends each free-text answer to a third model, `ollama/gemma3:12b` by default ([ADR 0056](../adr/0056-bigger-judge-and-no-invented-facts.md)) (`--judge`, or `--no-judge` to turn it off). The judge sees the app's prompt, the old model's first reference answer and the answer to check, but not which model wrote it. Its instructions treat the reference as one acceptable answer, not the only one; let answers to open-ended prompts add content; and fail answers that invent or misstate facts when the prompt gives source text ([ADR 0060](../adr/0060-judge-instructions-from-corpus-labels.md)). It replies PASS or FAIL, and that sets the score (1 or 0). An empty answer or a refusal scores 0 whatever the judge says. The property checks stay in the report to explain a FAIL.
 
 ## Limits (for now)
 

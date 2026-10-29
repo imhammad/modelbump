@@ -18,6 +18,11 @@ where it stopped.
 Run from the repo root (Ollama running, the three models pulled):
     uv run python -m research.corpus.run --apps 1     # a quick trial
     uv run python -m research.corpus.run              # every app (hours)
+
+``--out`` writes a run to another folder, so a later run (a new judge, say)
+keeps the earlier one. ``--drop-case`` leaves out a case by its merged id
+(``app-14/src/agenthatch/skill/reflection.py:202#1``), for prompts found broken
+by hand; dropped cases are counted.
 """
 
 import argparse
@@ -114,12 +119,19 @@ async def run_app(
     seed: int,
     generator: str,
     generator_version: str,
+    name: str = "",
+    drop: frozenset[str] = frozenset(),
 ) -> tuple[Suite, SuiteRun | None, dict[str, Any]]:
-    """Build one app's suite and run it. The run is None when no case could be made."""
+    """Build one app's suite and run it. The run is None when no case could be made.
+
+    Cases whose merged id (``name/case-id``) is in ``drop`` are left out.
+    """
     result = find_cases(Path(str(app["folder"])), skip_tests=True)
     picked = pick_calls(result, calls, random.Random(f"{seed}-{app['repo']}"))
     generated = await add_generated(picked, runner, 1, generator, generator_version)
-    suite = one_case_per_call(build_suite(generated.result))
+    built = one_case_per_call(build_suite(generated.result))
+    kept = tuple(case for case in built.cases if f"{name}/{case.id}" not in drop)
+    suite = Suite(kept, built.left_out)
     row: dict[str, Any] = {
         "app": app["app"],
         "repo": app["repo"],
@@ -128,6 +140,7 @@ async def run_app(
         "generated_for": generated.asked,
         "generated": generated.added,
         "cases": len(suite.cases),
+        "dropped": len(built.cases) - len(kept),
         "cases_by_oracle": dict(Counter(case.oracle.kind.value for case in suite.cases)),
         "generated_cases": sum(case.generated_by is not None for case in suite.cases),
     }
@@ -151,6 +164,7 @@ async def run_corpus(
     generator: str = DEFAULT_GENERATOR,
     generator_version: str = "",
     progress: Callable[[str], None] = lambda line: None,
+    drop: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Run every app, write each suite and report, the merged report and the totals."""
     runs_dir = out_dir / "runs"
@@ -167,6 +181,8 @@ async def run_corpus(
             seed=seed,
             generator=generator,
             generator_version=generator_version,
+            name=name,
+            drop=drop,
         )
         (runs_dir / f"{name}.suite.json").write_text(suite_to_json(suite), encoding="utf-8")
         if run is not None:
@@ -211,6 +227,7 @@ def run_stats(
         "testable_calls": sum(int(row["testable_calls"]) for row in rows),
         "picked_calls": sum(int(row["picked_calls"]) for row in rows),
         "cases": sum(int(row["cases"]) for row in rows),
+        "dropped": sum(int(row.get("dropped", 0)) for row in rows),
         "generated_cases": sum(int(row["generated_cases"]) for row in rows),
         "cases_by_oracle": dict(oracles.most_common()),
         "verdicts": {v.value: verdicts[v.value] for v in Verdict},
@@ -227,7 +244,8 @@ def summary(stats: Mapping[str, Any]) -> str:
             f"{stats['old']} -> {stats['new']}, {stats['method']} k={stats['runs']}, "
             f"judge {stats['judge']}",
             f"Calls: {stats['testable_calls']} testable, {stats['picked_calls']} picked; "
-            f"{stats['cases']} cases ({stats['generated_cases']} with generated inputs)",
+            f"{stats['cases']} cases ({stats['generated_cases']} with generated inputs)"
+            + (f", {stats['dropped']} dropped by hand" if stats["dropped"] else ""),
             f"Cases by oracle: {stats['cases_by_oracle']}",
             f"Verdicts: {stats['verdicts']}"
             + (f"; {stats['not_run']} not run" if stats["not_run"] else ""),
@@ -240,6 +258,12 @@ def main(argv: Sequence[str] | None = None, runner: Runner | None = None) -> int
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--corpus", type=Path, default=Path("research/data/corpus"))
+    parser.add_argument(
+        "--out", type=Path, default=None, help="Write the run here (default: the corpus folder)."
+    )
+    parser.add_argument(
+        "--drop-case", action="append", default=[], help="Leave out this case id. Repeatable."
+    )
     parser.add_argument("--apps", type=int, default=None, help="Only the first N apps.")
     parser.add_argument(
         "--calls", type=int, default=CALLS_PER_APP, help=f"Calls per app ({CALLS_PER_APP})."
@@ -285,11 +309,12 @@ def main(argv: Sequence[str] | None = None, runner: Runner | None = None) -> int
                 apps,
                 runner,
                 settings,
-                args.corpus,
+                args.out or args.corpus,
                 calls=args.calls,
                 seed=args.seed,
                 generator_version=generator_version,
                 progress=lambda line: print(line, file=sys.stderr),
+                drop=frozenset(args.drop_case),
             )
         )
     finally:

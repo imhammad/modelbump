@@ -29,9 +29,15 @@ SYSTEM = (
     "PASS means the candidate does what the prompt asks at least as well as the "
     "reference: it is correct, it answers the request, and it follows the prompt's "
     "instructions (length, format, tone). Wording may differ. "
+    "The reference is one acceptable answer, not the only one: PASS a candidate that "
+    "makes another valid choice, or that is more correct than the reference. "
+    "If the prompt asks for something new (a description, a plan, a pitch, questions, "
+    "code), adding content is the job: do not fail an answer for details the prompt "
+    "does not contain. "
+    "If the prompt gives source text to work from (a document, a thread, a summary, "
+    "data), FAIL an answer that states facts that are not in that source, or that "
+    "misstates what it says: who did what, what is done or still pending, numbers and names. "
     "FAIL means it is wrong, misses part of the request, or breaks an instruction. "
-    "FAIL if the answer states any fact that isn't in the source text (the app's prompt) "
-    "or the reference, even if it sounds plausible. "
     "Reply with one word: PASS or FAIL."
 )
 

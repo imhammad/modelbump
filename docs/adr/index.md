@@ -65,3 +65,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0057](0057-benchmark-corpus-from-migration-snapshots.md) | Build the benchmark corpus from apps that really migrated, as they were before the migration | Accepted |
 | [0058](0058-judge-probes.md) | Test the judge with answers broken on purpose | Accepted |
 | [0059](0059-run-the-corpus-end-to-end.md) | Run the corpus end to end, a few calls per app, and label across apps | Accepted |
+| [0060](0060-judge-instructions-from-corpus-labels.md) | Rewrite the judge's instructions from the corpus labels, drop cases with a wrong reference, and test on fresh labels | Accepted |

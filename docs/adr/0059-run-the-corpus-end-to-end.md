@@ -31,3 +31,27 @@ Running the corpus also showed a gap in the suite builder: a call whose prompt i
 - About 120 cases at most (fewer where an app has fewer than 3 testable calls), and a few thousand model requests: a run of some hours, best left overnight.
 - The corpus verdicts are a sample of what `modelbump test` finds on real apps, not a full test of each app.
 - Labels across 40 apps cover many more prompts than the 4-prompt demo, so the agreement numbers will be the ones the paper reports.
+
+## Results (29 October 2026)
+
+The full run took about 7 minutes per app (2,247 requests, 255 more answers from the cache). 36 of the 40 apps got at least one case. The other 4 had no testable call, or none that got a usable input.
+
+| | Count |
+|---|---|
+| Testable calls in the 40 apps | 184 |
+| Calls picked (up to 3 per app) | 90 |
+| Cases run | 75 (42 JSON, 33 text; 61 with generated inputs) |
+| REGRESSED | 7, in 7 apps (2 JSON, 5 text) |
+| INCONCLUSIVE | 68 |
+| EQUIVALENT / IMPROVED | 0 / 0 (as expected at k = 10) |
+
+15 of the 90 picked calls got no case, because the generator gave no usable input for them.
+
+**Hand labels.** 200 judged answers were drawn from `report-all.json` (172 rows, since equal answers share a row) and labelled blind by the project author:
+
+| | Agreed | 95% CI |
+|---|---|---|
+| Judge said PASS | 90% (90 of 100) | 82-95% |
+| Judge said FAIL | 57% (57 of 100) | 47-67% |
+
+Kappa on the sheet was 0.47, and the agreement weighted to the whole report was 73%. Corrected to the labels, Qwen 2.5 passes 68% (59-76%) of free-text answers and Qwen 3 63% (54-71%), against the judge's own 54% and 42%. On the corpus, the judge with ADR 0056's instructions is **too strict**, the opposite of the demo pilot. The labeller's reading of the 43 wrong FAILs, and what was done about them, is in [ADR 0060](0060-judge-instructions-from-corpus-labels.md). The 2 JSON regressions are scored by property checks. The 5 text ones rest on the judge, so they are re-checked with the new judge.

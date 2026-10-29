@@ -315,7 +315,10 @@ def test_old_labels_against_a_new_judge(tmp_path: Path) -> None:
     lines = agreement_lines(result)
     assert lines[0] == "Judge: ollama/bigger"
     assert lines[1].startswith("Verdicts from another report;")
-    assert lines[2] == "1 labelled answers had no clear verdict; left out."
+    assert lines[2] == (
+        "1 labelled answers have no PASS or FAIL in that report "
+        "(an unclear verdict, or a case left out of it); left out."
+    )
     assert not any("corrected" in line for line in lines[3:])
 
 

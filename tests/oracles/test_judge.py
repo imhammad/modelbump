@@ -76,3 +76,11 @@ def test_unclear_verdict_keeps_the_property_score() -> None:
     unclear = with_judge(properties, None)
     assert unclear.value == properties.value
     assert unclear.failed[-1] == "judge: no clear verdict"
+
+
+def test_the_judge_instructions_cover_the_corpus_mistakes() -> None:
+    from modelbump.oracles.judge import SYSTEM
+
+    assert "The reference is one acceptable answer, not the only one" in SYSTEM
+    assert "adding content is the job" in SYSTEM
+    assert "what is done or still pending" in SYSTEM

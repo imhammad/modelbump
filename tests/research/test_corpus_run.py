@@ -179,3 +179,16 @@ def test_main_runs_the_first_apps(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "Ran 1 apps (1 with test cases)" in out
     stats = json.loads((corpus / "run.stats.json").read_text())
     assert (stats["runs"], stats["apps"]) == (5, 1)
+
+
+def test_drop_case_and_out_folder(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    corpus = write_corpus(tmp_path)
+    runner, _ = fake_runner()
+    out = tmp_path / "run-v2"
+    args = ["--corpus", str(corpus), "--out", str(out), "--drop-case", "app-03/poet.py:9#1"]
+    assert main(args, runner=runner) == 0
+    assert "1 dropped by hand" in capsys.readouterr().out
+    stats = json.loads((out / "run.stats.json").read_text())
+    assert (stats["cases"], stats["dropped"]) == (2, 1)
+    assert not (out / "runs" / "app-03.report.json").exists()
+    assert not (corpus / "run.stats.json").exists()  # the corpus folder only gets read

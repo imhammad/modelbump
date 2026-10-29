@@ -367,7 +367,10 @@ def agreement_lines(result: Agreement) -> list[str]:
             "verdicts, so this checks labels already used and pass rates are not corrected."
         )
         if result.unclear:
-            lines.append(f"{result.unclear} labelled answers had no clear verdict; left out.")
+            lines.append(
+                f"{result.unclear} labelled answers have no PASS or FAIL in that report "
+                "(an unclear verdict, or a case left out of it); left out."
+            )
     lines += [
         f"Labelled {result.labelled} answers"
         + (f" ({result.unlabelled_rows} rows still blank)." if result.unlabelled_rows else "."),
