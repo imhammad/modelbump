@@ -20,9 +20,9 @@ flowchart LR
 |-------|----------------|--------|
 | [Registry](registry.md) | Which model IDs are retired, and when | v1 (Phase 1) |
 | [Scanner](scanner.md) | Find model IDs in code and config; match them against retirement dates | v0.1.0 (Phase 2) |
-| [Suite synthesizer](synth.md) | Build regression test cases and oracles from the target repo | In progress (Phase 5) |
-| [Oracles](oracles.md) | Decide whether each answer still does the job, by output type | In progress (Phase 5) |
-| [Suites](suite.md) | Write the suite file and run it on two models (`modelbump test`) | In progress (Phase 5) |
+| [Suite synthesizer](synth.md) | Build regression test cases and oracles from the target repo | v0.4.0 (Phase 5) |
+| [Oracles](oracles.md) | Decide whether each answer still does the job, by output type | v0.4.0 (Phase 5) |
+| [Suites](suite.md) | Write the suite file and run it on two models (`modelbump test`) | v0.4.0 (Phase 5) |
 | [Runner](runner.md) | Call models with caching, retries and a cost budget | Done (Phase 3) |
 | [Stats engine](stats.md) | Decide REGRESSED / IMPROVED / EQUIVALENT / INCONCLUSIVE per test case | v0.3.0 (Phase 4) |
 | Prompt repair | Find prompt edits that fix regressions safely | Planned (Phase 6) |

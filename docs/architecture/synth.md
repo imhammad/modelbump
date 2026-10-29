@@ -14,11 +14,11 @@ flowchart LR
     cases --> generate[generate.py<br/>a local model writes<br/>the missing inputs]
     generate --> cli2[modelbump cases]
     cases --> cli2
-    generate -.later steps.-> oracles[oracles by output type]
-    oracles -.-> suite[regression suite]
+    generate --> oracles[oracles by output type]
+    oracles --> suite[suite file and modelbump test]
 ```
 
-Steps P5-1 to P5-4 built the solid boxes. The dotted ones are the next steps of Phase 5.
+The [oracles](oracles.md) and the [suite file with `modelbump test`](suite.md) have their own pages. How it all does on 40 real apps is in [the Phase 5 results](../research/suites.md).
 
 ## What a call site holds
 

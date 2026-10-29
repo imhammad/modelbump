@@ -1,6 +1,6 @@
 # ModelBump
 
-**Dependabot for LLM models.** ModelBump finds the AI models your code depends on and warns you before a provider retires them. Later versions will also test the old model against its replacement, repair prompts that regress, and open the upgrade pull request for you.
+**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, and tests the replacement on your app's own prompts. Later versions will also repair prompts that regress and open the upgrade pull request for you.
 
 [![PyPI](https://img.shields.io/pypi/v/modelbump)](https://pypi.org/project/modelbump/)
 [![CI](https://github.com/imhammad/modelbump/actions/workflows/ci.yml/badge.svg)](https://github.com/imhammad/modelbump/actions/workflows/ci.yml)
@@ -9,7 +9,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/)
 
-> **Status:** `v0.3.0` ships the first stage, **Scan**, as a command-line tool and a GitHub Action, plus two building blocks for the next stages: a model runner (`modelbump ask`) and a statistics engine (`modelbump stats`) that tells a real regression from normal LLM randomness. The other stages are still being built; see the [roadmap](#roadmap).
+> **Status:** `v0.4.0` ships the first two stages. **Scan** finds retiring models, as a command-line tool and a GitHub Action. **Test** builds a regression suite from your app's LLM calls and compares the old and new model on it (`modelbump suite`, `modelbump test`). Repair and the upgrade pull request are still being built; see the [roadmap](#roadmap).
 
 ## The problem
 
@@ -103,13 +103,29 @@ Verdict: REGRESSED (the new model is worse on this test case)
 
 It also stops asking as soon as the answer is clear, and controls false alarms across a whole suite. On real answers from two local models (Qwen 2.5 against itself), a single-run diff flagged 2.6 of 60 unchanged test cases as worse on every run; the engine's suite methods flagged almost none ([results](https://imhammad.github.io/modelbump/research/stats-real/), [how it works](https://imhammad.github.io/modelbump/architecture/stats/)).
 
+## Test the new model on your app
+
+`modelbump suite` finds the LLM calls in your Python code, reads their prompts, and makes test cases: from your own code where it calls them with real values, or with inputs written by a local model. Each case gets a check that fits its output: JSON keys and types, a label from a list, or free text graded by an LLM judge. `modelbump test` then runs both models on every case several times and decides each one with the statistics engine.
+
+```console
+$ modelbump suite . --generate 2 --output suite.json
+$ modelbump test suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
+Compared ollama/qwen2.5:7b -> ollama/qwen3:8b on 9 test cases: fixed k=50 + BH ...
+REGRESSED    support.py:24#1  label  old 1.00 -> new 0.12  (50 runs)
+...
+```
+
+It exits with code 1 when a case regressed, so it can gate CI. Everything runs on free local models through [Ollama](https://ollama.com/) by default.
+
+On 40 real open-source apps, drawn at random from projects that really migrated, it built and ran 70 test cases. The free-text judge agreed with blind hand labels on 83% of answers (87% of its PASSes and 68% of its FAILs were right), and it caught 22 of 24 answers broken on purpose ([results](https://imhammad.github.io/modelbump/research/suites/), [how suites work](https://imhammad.github.io/modelbump/architecture/suite/)).
+
 ## The plan
 
 | Stage | What it does | Status |
 |-------|--------------|--------|
 | **Scan** | Static analysis finds every model ID in your code and config, checks it against a registry of provider retirement dates, and fails CI *before* the shutdown date. | Available (`v0.1.0`) |
-| **Test** | Builds an app-specific regression suite from your prompts, tests, and (optionally) logs. | Planned |
-| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Engine available (`v0.3.0`); runs on your app in a later version |
+| **Test** | Builds an app-specific regression suite from your prompts and tests, with an oracle per output type and a calibrated LLM judge for free text. | Available (`v0.4.0`) |
+| **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Available (`v0.4.0`, `modelbump test`) |
 | **Repair** | Searches for prompt edits that fix regressions without breaking anything that already worked. | Planned |
 | **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. | Planned |
 
@@ -132,7 +148,7 @@ uv run pytest
 - [x] **Phase 2:** Scanner + GitHub Action (`v0.1.0`)
 - [x] **Phase 3:** Model runner with caching and cost budgets (`v0.2.0`)
 - [x] **Phase 4:** Statistical comparison engine (`v0.3.0`)
-- [ ] **Phase 5:** Regression suite synthesis + LLM-judge calibration
+- [x] **Phase 5:** Regression suite synthesis + LLM-judge calibration (`v0.4.0`)
 - [ ] **Phase 6:** Prompt repair
 - [ ] **Phase 7:** End-to-end `modelbump bump` + `v1.0.0`
 

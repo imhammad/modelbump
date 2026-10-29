@@ -2,7 +2,7 @@
 
 **Dependabot for LLM models.** ModelBump finds the AI models your code depends on and warns you before a provider retires them. Later versions will also test the old model against its replacement, repair prompts that regress, and open the upgrade pull request for you.
 
-!!! note "v0.3.0: the scanner, the runner and the statistics engine"
+!!! note "v0.4.0: scan, then test the new model on your own prompts"
     The first stage, **Scan**, is out as a command-line tool and a GitHub Action:
 
     ```bash
@@ -10,7 +10,14 @@
     modelbump scan .
     ```
 
-    See [the scanner](architecture/scanner.md) for the options and the Action. Two building blocks for the next stages are out too: [the model runner](architecture/runner.md) (`modelbump ask`) and [the statistics engine](architecture/stats.md) (`modelbump stats`), which tells a real regression from normal LLM randomness. The other stages are still being built.
+    The second, **Test**, builds a regression suite from your app's own LLM calls and compares the old and the new model on it, with a calibrated judge for free text:
+
+    ```bash
+    modelbump suite . --generate 2 --output suite.json
+    modelbump test suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
+    ```
+
+    See [the scanner](architecture/scanner.md), [suites and `modelbump test`](architecture/suite.md) and [the Phase 5 results on 40 real apps](research/suites.md). Repair and the upgrade pull request are still being built.
 
 ## Where to look
 
