@@ -44,3 +44,20 @@ The paraphrase is a control: without it, a judge that fails everything would loo
 - A judge change (model or instructions) can be compared on the same probes: the probes are cached, so only the judge is asked again.
 - Four of the five kinds are broken, so the labeller knows most rows should fail. The labels are still blind to which rows are which, and the paraphrase rows show whether the labeller passes a correct answer.
 - The probes come from one breaker model, so they share its style. Real mistakes from other models may be harder to spot.
+
+## Results (29 October 2026)
+
+On the Gemma demo report (4 free-text cases, 2 probes per kind), the breaker wrote 37 of 40 probes. It failed to write one flipped meaning and two missing facts. The project author labelled all 37 blind:
+
+| Kind | Labelled | Confirmed by hand | Judge right | 95% CI |
+|---|---|---|---|---|
+| `changed_source` | 8 | 7 wrong | 7 of 7 FAIL | 56-100% |
+| `flipped_meaning` | 7 | 6 wrong | 6 of 6 FAIL | 52-100% |
+| `missing_fact` | 6 | 3 wrong | 1 of 3 FAIL | 2-87% |
+| `hedged_invention` | 8 | 8 wrong | 8 of 8 FAIL | 60-100% |
+| `paraphrase` (control) | 8 | 8 right | 8 of 8 PASS | 60-100% |
+| All broken kinds | | 24 | 22 of 24 FAIL (92%) | 72-99% |
+
+When one clean edit separates an answer from the reference, Gemma 3 12B catches nearly every kind of mistake, and it does not fail correct rewordings. Its one weak kind is a missing key fact. That kind was also the hardest for the breaker: only 3 of its 6 edits really dropped the fact.
+
+On real answers, the same judge passed about 30% wrong ones (ADR 0056). So its misses there are subtler than a single clean edit: answers that differ from the reference in many places at once. The corpus labels ([ADR 0059](0059-run-the-corpus-end-to-end.md)) measure that.

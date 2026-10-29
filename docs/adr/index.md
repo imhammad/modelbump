@@ -64,3 +64,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0056](0056-bigger-judge-and-no-invented-facts.md) | Use Gemma 3 12B as the judge, fail invented facts, and test the change on fresh labels | Accepted |
 | [0057](0057-benchmark-corpus-from-migration-snapshots.md) | Build the benchmark corpus from apps that really migrated, as they were before the migration | Accepted |
 | [0058](0058-judge-probes.md) | Test the judge with answers broken on purpose | Accepted |
+| [0059](0059-run-the-corpus-end-to-end.md) | Run the corpus end to end, a few calls per app, and label across apps | Accepted |

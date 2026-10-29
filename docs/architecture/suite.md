@@ -2,6 +2,8 @@
 
 A suite is the list of test cases a comparison runs: each case's final messages, its [oracle](oracles.md), and where its inputs came from ([ADR 0053](../adr/0053-suite-file-and-modelbump-test.md)). It is a JSON file, so a team can read it, edit it and commit it.
 
+A case's inputs come from the app's own code, from a generator model (`--generate`), or from nowhere: a call whose prompt is all written text, with no slots, is one case as it is (source `fixed prompt in the code`).
+
 ```console
 $ modelbump suite tests/fixtures/prompt-demo --generate 2 --output demo-suite.json
 Wrote 9 test cases for 4 LLM calls to demo-suite.json.

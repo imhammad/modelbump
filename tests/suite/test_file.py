@@ -116,3 +116,19 @@ def test_hand_written_case_with_defaults(tmp_path: Path) -> None:
     assert only.generated_by is None
     assert only.app_model is None
     assert suite.left_out == ()
+
+
+def test_a_fixed_prompt_is_its_own_case(tmp_path: Path) -> None:
+    (tmp_path / "poet.py").write_text(
+        "from openai import OpenAI\n\n"
+        "OpenAI().chat.completions.create(\n"
+        '    model="gpt-4", messages=[{"role": "user", "content": "Write a haiku about rain."}]\n'
+        ")\n"
+    )
+    suite = build_suite(find_cases(tmp_path))
+    (only,) = suite.cases
+    assert only.id == "poet.py:3#1"
+    assert only.source == "fixed prompt in the code"
+    assert only.generated_by is None
+    assert only.messages == (("user", "Write a haiku about rain."),)
+    assert suite.left_out == ()

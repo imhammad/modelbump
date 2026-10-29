@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from modelbump.oracles import OracleChoice, OutputKind, choose_oracle
-from modelbump.synth.cases import CaseResult
+from modelbump.synth.cases import CaseResult, TestCase
 
 SUITE_VERSION = 1
+FIXED_SOURCE = "fixed prompt in the code"
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +51,10 @@ class Suite:
 
 
 def build_suite(result: CaseResult) -> Suite:
-    """Every complete case of every call, except tool calls, with its oracle."""
+    """Every complete case of every call, except tool calls, with its oracle.
+
+    A call whose prompt is all written text, with no slots, is one case as it is.
+    """
     cases: list[SuiteCase] = []
     left_out: list[tuple[str, str]] = []
     for entry in result.sites:
@@ -58,6 +62,9 @@ def build_suite(result: CaseResult) -> Suite:
         where = f"{site.path}:{site.line}"
         choice = choose_oracle(site)
         complete = [case for case in entry.cases if case.complete]
+        if not complete and site.complete and not site.slots:
+            # A fixed prompt needs no inputs: it is its own test case.
+            complete = [TestCase(site, FIXED_SOURCE, ())]
         if choice.kind is OutputKind.TOOLS:
             left_out.append((where, "tool calls are not scored yet"))
             continue
