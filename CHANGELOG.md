@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.0](https://github.com/imhammad/modelbump/compare/v0.3.0...v0.4.0) (2026-10-29)
+
+
+### Features
+
+* **oracles:** bigger judge that fails invented facts ([#77](https://github.com/imhammad/modelbump/issues/77)) ([d1dccb3](https://github.com/imhammad/modelbump/commit/d1dccb3b0aaf26efb99f65dfd8cae4b54486dd3e))
+* **oracles:** blind label sheet and judge agreement ([#76](https://github.com/imhammad/modelbump/issues/76)) ([bb5e693](https://github.com/imhammad/modelbump/commit/bb5e6936068c20e9dc2b73dcf54bab90042b0b8e))
+* **oracles:** judge probes with answers broken on purpose ([#79](https://github.com/imhammad/modelbump/issues/79)) ([24f79d9](https://github.com/imhammad/modelbump/commit/24f79d93fe1f44cedf7bb2abbf858f5344b4ccb6))
+* **oracles:** LLM judge for free-text answers ([#75](https://github.com/imhammad/modelbump/issues/75)) ([e5334dc](https://github.com/imhammad/modelbump/commit/e5334dc735256d2c5deeb689c42e1eaa4886960a))
+* **oracles:** pick an oracle per call and score answers against the old model ([#73](https://github.com/imhammad/modelbump/issues/73)) ([023c672](https://github.com/imhammad/modelbump/commit/023c672750d8e6ddd78673d6a56cd9ce629aa3d3))
+* **research:** benchmark corpus of real LLM apps ([#78](https://github.com/imhammad/modelbump/issues/78)) ([6276581](https://github.com/imhammad/modelbump/commit/62765813400e6c14e639dd4ed499cbee18556284))
+* **research:** run the corpus end to end ([#80](https://github.com/imhammad/modelbump/issues/80)) ([738dcd9](https://github.com/imhammad/modelbump/commit/738dcd97dba495e860e690ce2aa13fbc9c645d5c))
+* **suite:** suite file and modelbump test on two models ([#74](https://github.com/imhammad/modelbump/issues/74)) ([fbb37f5](https://github.com/imhammad/modelbump/commit/fbb37f54b8d2305dc7632770e8f6121119e14693))
+* **synth:** find LLM calls and their prompt templates ([#68](https://github.com/imhammad/modelbump/issues/68)) ([16dbd13](https://github.com/imhammad/modelbump/commit/16dbd13833300369f09e187464049267522c77f6))
+* **synth:** follow prompts into other files, classes and prompt functions ([#70](https://github.com/imhammad/modelbump/issues/70)) ([ea7e3ce](https://github.com/imhammad/modelbump/commit/ea7e3ce5c65ceff93d01cd2a5fe588e8aadce60a))
+* **synth:** generated test inputs from a local model ([#72](https://github.com/imhammad/modelbump/issues/72)) ([9d50746](https://github.com/imhammad/modelbump/commit/9d50746beccd72a7a707d070cfbd3da9abc66b7a))
+* **synth:** test inputs from the app's own tests and callers ([#71](https://github.com/imhammad/modelbump/issues/71)) ([5c9d860](https://github.com/imhammad/modelbump/commit/5c9d86092e40927ec27e8e869447e8687daabf98))
+
+
+### Bug Fixes
+
+* **oracles:** judge fails made-up specifics about the app ([#82](https://github.com/imhammad/modelbump/issues/82)) ([4dfe059](https://github.com/imhammad/modelbump/commit/4dfe059126e1a69468e3ac5d5967985ad84ec92e))
+* **oracles:** judge instructions from the corpus labels ([#81](https://github.com/imhammad/modelbump/issues/81)) ([8b1e29d](https://github.com/imhammad/modelbump/commit/8b1e29df63aa3cd79fe6475cdc27440a6965c096))
+
+
+### Documentation
+
+* phase 5 results and README for v0.4.0 ([#83](https://github.com/imhammad/modelbump/issues/83)) ([0fde252](https://github.com/imhammad/modelbump/commit/0fde252b4d64c42e049ae095205733ae10dd9a77))
+
 ## [0.3.0](https://github.com/imhammad/modelbump/compare/v0.2.0...v0.3.0) (2026-10-27)
 
 
