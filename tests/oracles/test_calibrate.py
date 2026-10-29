@@ -157,10 +157,11 @@ def test_agreement_and_corrected_pass_rates(tmp_path: Path) -> None:
     assert old.low <= old.corrected <= old.high
     assert new.corrected == pytest.approx(0.5 + 0.5 / 3)
     lines = agreement_lines(result)
-    assert lines[0] == "Labelled 80 answers."
-    assert lines[1].startswith("When the judge said PASS, you agreed 100% (50/50, 95% CI")
-    assert lines[2].startswith("When the judge said FAIL, you agreed 67% (20/30")
-    assert "  old answers: PASS 100% (30/30" in lines[3]
+    assert lines[0] == "Judge: ollama/judge"
+    assert lines[1] == "Labelled 80 answers."
+    assert lines[2].startswith("When the judge said PASS, you agreed 100% (50/50, 95% CI")
+    assert lines[3].startswith("When the judge said FAIL, you agreed 67% (20/30")
+    assert "  old answers: PASS 100% (30/30" in lines[4]
     assert any(line.startswith("ollama/new: judge pass rate 50%, corrected 67%") for line in lines)
 
 
@@ -180,7 +181,7 @@ def test_partly_labelled_sheet(tmp_path: Path) -> None:
     assert result.unlabelled_rows == 9
     assert result.rates == ()
     lines = agreement_lines(result)
-    assert lines[0] == "Labelled 1 answers (9 rows still blank)."
+    assert lines[1] == "Labelled 1 answers (9 rows still blank)."
     assert "When the judge said FAIL, you agreed no answers." in lines
     assert lines[-1] == "Label answers the judge PASSed and FAILed to correct the pass rates."
 
@@ -253,3 +254,77 @@ def test_reports_that_cannot_make_a_sheet(tmp_path: Path) -> None:
     del data["cases"][0]["reference_answer"]  # type: ignore[index]
     with pytest.raises(ValueError, match="older ModelBump"):
         read_report(write_report(tmp_path, data))
+
+
+# --- A second sheet, and checking a new judge on old labels (ADR 0056) ------------
+
+
+def test_a_fresh_sheet_leaves_out_answers_already_labelled(tmp_path: Path) -> None:
+    report = write_report(tmp_path)
+    first_key = tmp_path / "key1.json"
+    first = make_sheet(report, tmp_path / "s1.csv", first_key, size=20, seed=1)
+    second_key = tmp_path / "key2.json"
+    second = make_sheet(
+        report, tmp_path / "s2.csv", second_key, size=20, seed=2, exclude=[first_key]
+    )
+    assert second.excluded == first.answers == 20
+    assert second.available == {"PASS": 40, "FAIL": 20}
+    one = {
+        (i["case"], a["model"], a["sample"])
+        for i in json.loads(first_key.read_text())["items"]
+        for a in i["answers"]
+    }
+    two = {
+        (i["case"], a["model"], a["sample"])
+        for i in json.loads(second_key.read_text())["items"]
+        for a in i["answers"]
+    }
+    assert not one & two
+    assert json.loads(second_key.read_text())["excluded"] == [str(first_key)]
+
+
+def test_old_labels_against_a_new_judge(tmp_path: Path) -> None:
+    sheet, key = tmp_path / "sheet.csv", tmp_path / "key.json"
+    make_sheet(write_report(tmp_path), sheet, key, size=80, seed=3)
+    person = {
+        ("old", "PASS"): True,
+        ("new", "PASS"): False,
+        ("old", "FAIL"): False,
+        ("new", "FAIL"): False,
+    }
+    label_sheet(sheet, key, person)
+    # The new judge fails every new answer, and gives no verdict on old answer 0.
+    data = report_data()
+    for item in data["cases"][0]["answers"]:  # type: ignore[index]
+        if item["model"] == "new":
+            item["judge"] = "FAIL"
+        if item["model"] == "old" and item["sample"] == 0:
+            item["judge"] = "unclear"
+    data["judge"] = "ollama/bigger"
+    rejudged = tmp_path / "rejudged.json"
+    rejudged.write_text(json.dumps(data), encoding="utf-8")
+    result = agreement(sheet, key, rejudged)
+    assert result.rejudged
+    assert result.judge == "ollama/bigger"
+    assert result.unclear == 1
+    assert result.labelled == 79
+    # New answers: the person fails all 40, and so does the new judge.
+    _, new_fail = result.per_model["new"]
+    assert (new_fail.agree, new_fail.total) == (40, 40)
+    assert result.rates == ()
+    lines = agreement_lines(result)
+    assert lines[0] == "Judge: ollama/bigger"
+    assert lines[1].startswith("Verdicts from another report;")
+    assert lines[2] == "1 labelled answers had no clear verdict; left out."
+    assert not any("corrected" in line for line in lines[3:])
+
+
+def test_a_new_report_must_compare_the_same_models(tmp_path: Path) -> None:
+    sheet, key = tmp_path / "sheet.csv", tmp_path / "key.json"
+    make_sheet(write_report(tmp_path), sheet, key, size=4)
+    data = report_data()
+    data["new"] = "ollama/other"
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="compares other models"):
+        agreement(sheet, key, other)

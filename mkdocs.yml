@@ -113,6 +113,7 @@ nav:
       - adr/0053-suite-file-and-modelbump-test.md
       - adr/0054-llm-judge-for-free-text.md
       - adr/0055-check-the-judge-against-hand-labels.md
+      - adr/0056-bigger-judge-and-no-invented-facts.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md

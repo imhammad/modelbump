@@ -12,7 +12,7 @@ Wrote 9 test cases for 4 LLM calls to demo-suite.json.
 
 ```console
 $ modelbump test demo-suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
-Compared ollama/qwen2.5:7b -> ollama/qwen3:8b on 9 test cases: fixed k=50 + BH (q 0.05, margin 0.10), 3 reference answers per case, free text judged by ollama/llama3.1:8b.
+Compared ollama/qwen2.5:7b -> ollama/qwen3:8b on 9 test cases: fixed k=50 + BH (q 0.05, margin 0.10), 3 reference answers per case, free text judged by ollama/gemma3:12b.
 REGRESSED    support.py:24#1  label  old 1.00 -> new 0.12  (50 runs)
              new model failed: same label as before (bug) (44/50)
 ...
@@ -39,7 +39,7 @@ Every answer is cached, so running the same command again costs nothing. The exi
 | `--reference` | 3 | Old answers per case that set the reference. |
 | `--method` | `auto` | `fixed`, `sequential`, or `auto` (fixed up to 100 runs). |
 | `--from-think`, `--to-think` | none set | Reasoning effort for a thinking model, e.g. `--to-think none` for Qwen 3. |
-| `--judge` | `ollama/llama3.1:8b` | The model that judges free-text answers ([ADR 0054](../adr/0054-llm-judge-for-free-text.md)). |
+| `--judge` | `ollama/gemma3:12b` | The model that judges free-text answers ([ADR 0054](../adr/0054-llm-judge-for-free-text.md)). |
 | `--no-judge` | off | Check free text with property checks only. |
 | `--temperature` | 0.7 | Sampling temperature for both models. |
 | `--max-tokens` | 400 | Longest answer. |

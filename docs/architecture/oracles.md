@@ -45,7 +45,7 @@ The answers that build the reference are kept apart from the answers that are co
 
 ## Judging free text
 
-Property checks cannot tell a wrong summary from a right one. So `modelbump test` sends each free-text answer to a third model, `ollama/llama3.1:8b` by default (`--judge`, or `--no-judge` to turn it off). The judge sees the app's prompt, the old model's first reference answer and the answer to check, but not which model wrote it. It replies PASS or FAIL, and that sets the score (1 or 0). An empty answer or a refusal scores 0 whatever the judge says. The property checks stay in the report to explain a FAIL.
+Property checks cannot tell a wrong summary from a right one. So `modelbump test` sends each free-text answer to a third model, `ollama/gemma3:12b` by default ([ADR 0056](../adr/0056-bigger-judge-and-no-invented-facts.md)) (`--judge`, or `--no-judge` to turn it off). The judge sees the app's prompt, the old model's first reference answer and the answer to check, but not which model wrote it. It replies PASS or FAIL, and that sets the score (1 or 0). An empty answer or a refusal scores 0 whatever the judge says. The property checks stay in the report to explain a FAIL.
 
 ## Limits (for now)
 
@@ -73,5 +73,7 @@ When the judge said FAIL, you agreed 60% (12/20, 95% CI ...).
 ...
 ollama/qwen3:8b: judge pass rate 78%, corrected 84% (range ...)
 ```
+
+To test a change to the judge without reusing labels it was tuned on, compare old labels with the re-judged run (`--report NEW_REPORT`, a check only), then draw a fresh sheet that leaves out answers already labelled (`modelbump judge sheet NEW_REPORT --exclude-key OLD_KEY`). See [ADR 0056](../adr/0056-bigger-judge-and-no-invented-facts.md).
 
 The numbers above only show the format. The corrected pass rate assumes that, given its verdict, the judge is as often wrong on one model's answers as on the other's. The per-model lines show whether that holds.

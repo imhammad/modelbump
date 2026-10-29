@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from modelbump.oracles.score import Check, Score
 from modelbump.runner import ChatRequest, Message
 
-DEFAULT_JUDGE = "ollama/llama3.1:8b"
+DEFAULT_JUDGE = "ollama/gemma3:12b"
 JUDGE_MAX_TOKENS = 8
 JUDGE_CHECK = "judge: as good as the reference"
 HARD_CHECKS = ("not empty", "not a refusal")
@@ -30,6 +30,8 @@ SYSTEM = (
     "reference: it is correct, it answers the request, and it follows the prompt's "
     "instructions (length, format, tone). Wording may differ. "
     "FAIL means it is wrong, misses part of the request, or breaks an instruction. "
+    "FAIL if the answer states any fact that isn't in the source text (the app's prompt) "
+    "or the reference, even if it sounds plausible. "
     "Reply with one word: PASS or FAIL."
 )
 

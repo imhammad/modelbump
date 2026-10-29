@@ -61,3 +61,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0053](0053-suite-file-and-modelbump-test.md) | Write the suite to a file, then run it on both models with `modelbump test` | Accepted |
 | [0054](0054-llm-judge-for-free-text.md) | Judge free-text answers with a third local model, against an old reference answer | Accepted |
 | [0055](0055-check-the-judge-against-hand-labels.md) | Check the judge against blind hand labels drawn by verdict, and correct pass rates for it | Accepted |
+| [0056](0056-bigger-judge-and-no-invented-facts.md) | Use Gemma 3 12B as the judge, fail invented facts, and test the change on fresh labels | Accepted |

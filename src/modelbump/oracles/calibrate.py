@@ -57,7 +57,9 @@ class Sheet:
     drawn: Counter[str]
     """Sampled answers per judge verdict."""
     available: Counter[str]
-    """Judged answers in the report per judge verdict."""
+    """Judged answers in the report per judge verdict, after leaving out earlier sheets."""
+    excluded: int = 0
+    """Answers left out because an earlier sheet holds them."""
 
 
 def _prompt_text(messages: Sequence[Any]) -> str:
@@ -88,14 +90,21 @@ def make_sheet(
     key: Path,
     size: int = DEFAULT_SIZE,
     seed: int = DEFAULT_SEED,
+    exclude: Sequence[Path] = (),
 ) -> Sheet:
-    """Write the blind sheet and its key. Returns what was drawn."""
+    """Write the blind sheet and its key. Returns what was drawn.
+
+    Answers listed in an ``exclude`` key (an earlier sheet) are not drawn again,
+    so a fresh sheet never repeats an answer a person has already seen.
+    """
     if size < 2:
         raise ValueError(f"size must be at least 2, got {size}")
     data, judged = read_report(report)
+    seen_before = {answer for path in exclude for answer in _key_answers(path)}
+    pool = [j for j in judged if (j.case, j.model, j.sample) not in seen_before]
     cases = {case["id"]: case for case in data["cases"]}
     rng = random.Random(seed)
-    by_verdict = {v: [j for j in judged if j.judge == v] for v in ("PASS", "FAIL")}
+    by_verdict = {v: [j for j in pool if j.judge == v] for v in ("PASS", "FAIL")}
     available = Counter({v: len(items) for v, items in by_verdict.items()})
     # Half from each verdict; when one runs short, the other fills the rest.
     want = {"PASS": size // 2, "FAIL": size - size // 2}
@@ -133,6 +142,7 @@ def make_sheet(
         "old": data["old"],
         "new": data["new"],
         "seed": seed,
+        "excluded": [str(path) for path in exclude],
         "population": dict(sorted(population.items())),
         "items": [
             {
@@ -147,7 +157,25 @@ def make_sheet(
         ],
     }
     key.write_text(json.dumps(key_data, indent=2) + "\n", encoding="utf-8")
-    return Sheet(len(order), len(drawn), Counter(j.judge for j in drawn), available)
+    return Sheet(
+        len(order), len(drawn), Counter(j.judge for j in drawn), available, len(seen_before)
+    )
+
+
+def _read_key(path: Path) -> dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("version") != KEY_VERSION:
+        raise ValueError(f"{path} is not a version {KEY_VERSION} judge key")
+    return data
+
+
+def _key_answers(path: Path) -> set[tuple[str, str, int]]:
+    """(case, model, sample) of every answer an earlier key holds."""
+    return {
+        (item["case"], answer["model"], int(answer["sample"]))
+        for item in _read_key(path)["items"]
+        for answer in item["answers"]
+    }
 
 
 def parse_label(text: str) -> bool | None:
@@ -204,6 +232,11 @@ class Agreement:
     overall: float
     """How often judge and person agree on the report's answers, weighted back."""
     rates: tuple[ModelRate, ...]
+    judge: str = ""
+    rejudged: bool = False
+    """True when the verdicts come from another report than the one the sheet was drawn from."""
+    unclear: int = 0
+    """Labelled answers left out because the other report's judge gave no clear verdict."""
 
 
 def _kappa(pairs: Sequence[tuple[bool, bool]]) -> float:
@@ -217,12 +250,34 @@ def _kappa(pairs: Sequence[tuple[bool, bool]]) -> float:
     return (observed - expected) / (1 - expected) if expected < 1 else 1.0
 
 
-def agreement(sheet: Path, key: Path) -> Agreement:
-    """Compare the person's labels with the judge, and correct each model's pass rate."""
-    key_data = json.loads(key.read_text(encoding="utf-8"))
-    if key_data.get("version") != KEY_VERSION:
-        raise ValueError(f"{key} is not a version {KEY_VERSION} judge key")
+def agreement(sheet: Path, key: Path, report: Path | None = None) -> Agreement:
+    """Compare the person's labels with the judge, and correct each model's pass rate.
+
+    With ``report`` (the same suite and models, judged again, for example by a new
+    judge), the labels are compared with that report's verdicts instead. The
+    sheet was drawn by the first judge's verdicts, so the pass rates are then not
+    corrected: this is a check on labels already used, not a fresh measurement.
+    """
+    key_data = _read_key(key)
     items = {int(item["item"]): item for item in key_data["items"]}
+    judge = str(key_data.get("judge", ""))
+    unclear = 0
+    if report is not None:
+        data, judged = read_report(report)
+        if (data["old"], data["new"]) != (key_data["old"], key_data["new"]):
+            raise ValueError(f"{report} compares other models than {key}")
+        verdicts = {(j.case, j.model, j.sample): j.judge for j in judged}
+        judge = str(data["judge"])
+        for item in items.values():
+            kept = []
+            for answer in item["answers"]:
+                found = verdicts.get((item["case"], answer["model"], int(answer["sample"])))
+                if found is None:
+                    unclear += 1
+                    continue
+                kept.append({**answer, "judge": found})
+            item["answers"] = kept
+        key_data["population"] = dict(Counter(f"{j.model} {j.judge}" for j in judged))
     with sheet.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         missing = {"item", "your_label"} - set(reader.fieldnames or ())
@@ -288,7 +343,10 @@ def agreement(sheet: Path, key: Path) -> Agreement:
         per_model=per_model,
         kappa=_kappa([(j, p) for j, p, _ in pairs]),
         overall=overall,
-        rates=tuple(model_rates),
+        rates=tuple(model_rates) if report is None else (),
+        judge=judge,
+        rejudged=report is not None,
+        unclear=unclear,
     )
 
 
@@ -302,7 +360,15 @@ def _rate(rate: Rate) -> str:
 
 def agreement_lines(result: Agreement) -> list[str]:
     """The agreement report, for people."""
-    lines = [
+    lines = [f"Judge: {result.judge}"] if result.judge else []
+    if result.rejudged:
+        lines.append(
+            "Verdicts from another report; the sheet was drawn by the first judge's "
+            "verdicts, so this checks labels already used and pass rates are not corrected."
+        )
+        if result.unclear:
+            lines.append(f"{result.unclear} labelled answers had no clear verdict; left out.")
+    lines += [
         f"Labelled {result.labelled} answers"
         + (f" ({result.unlabelled_rows} rows still blank)." if result.unlabelled_rows else "."),
         f"When the judge said PASS, you agreed {_rate(result.on_pass)}.",
@@ -320,6 +386,6 @@ def agreement_lines(result: Agreement) -> list[str]:
             f"{rate.model}: judge pass rate {rate.judged_pass:.0%}, "
             f"corrected {rate.corrected:.0%} (range {rate.low:.0%}-{rate.high:.0%})"
         )
-    if not result.rates:
+    if not result.rates and not result.rejudged:
         lines.append("Label answers the judge PASSed and FAILed to correct the pass rates.")
     return lines

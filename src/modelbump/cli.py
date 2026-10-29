@@ -760,10 +760,18 @@ def judge_sheet(
         int, typer.Option(min=2, help="Answers to draw, half judged PASS, half FAIL.")
     ] = DEFAULT_SHEET_SIZE,
     seed: Annotated[int, typer.Option(help="Seed for drawing and shuffling.")] = DEFAULT_SHEET_SEED,
+    exclude_key: Annotated[
+        list[Path] | None,
+        typer.Option(
+            help="Leave out the answers of an earlier sheet's key. Repeat for more.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
 ) -> None:
     """Write a blind sheet of judged answers for you to label PASS or FAIL."""
     try:
-        made = make_sheet(report, output, key, size, seed)
+        made = make_sheet(report, output, key, size, seed, exclude_key or ())
     except (ValueError, KeyError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -771,6 +779,8 @@ def judge_sheet(
         f"Wrote {made.rows} rows ({made.answers} answers: {made.drawn['PASS']} judged PASS, "
         f"{made.drawn['FAIL']} FAIL) to {output}, and the key to {key}."
     )
+    if made.excluded:
+        typer.echo(f"Left out {made.excluded} answers that earlier sheets hold.")
     typer.echo(
         f"The report had {made.available['PASS']} PASS and {made.available['FAIL']} FAIL. "
         "Fill in your_label with PASS or FAIL, without looking at the key."
@@ -786,10 +796,18 @@ def judge_agreement(
         Path,
         typer.Argument(help="The key from `modelbump judge sheet`.", exists=True, dir_okay=False),
     ],
+    report: Annotated[
+        Path | None,
+        typer.Option(
+            help="Compare with this report's verdicts instead (the same run, judged again).",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
 ) -> None:
     """How often the judge agrees with your labels, and pass rates corrected for it."""
     try:
-        result = agreement(sheet, key)
+        result = agreement(sheet, key, report)
     except (ValueError, KeyError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error

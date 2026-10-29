@@ -823,13 +823,13 @@ def test_test_passes_when_nothing_regressed(
     assert lines[0] == (
         "Compared ollama/old -> ollama/new on 5 test cases: fixed k=50 + BH "
         "(q 0.05, margin 0.10), 3 reference answers per case, "
-        "free text judged by ollama/llama3.1:8b."
+        "free text judged by ollama/gemma3:12b."
     )
     assert lines[-1] == "Result: 0 regressed, 0 inconclusive, 5 equivalent, 0 improved."
     # 5 cases x (3 reference + 50 + 50), and the judge reads the 100 answers of each
     # of the 2 free-text cases.
     assert len(seen) == 5 * (3 + 50 + 50) + 2 * 100
-    judged = [body for body in seen if body["model"] == "llama3.1:8b"]
+    judged = [body for body in seen if body["model"] == "gemma3:12b"]
     assert len(judged) == 200
     assert {body["temperature"] for body in judged} == {0.0}
     new = [body for body in seen if body["model"] == "new"]
@@ -995,7 +995,7 @@ def test_test_skips_the_judge_when_no_case_is_free_text(
     result = runner.invoke(app, ["test", str(out), "--from", "ollama/old", "--to", "ollama/new"])
     assert result.exit_code == 0
     assert asked == [["ollama/old", "ollama/new"]]
-    assert all(body["model"] != "llama3.1:8b" for body in seen)
+    assert all(body["model"] != "gemma3:12b" for body in seen)
 
 
 def test_judge_sheet_and_agreement_end_to_end(
@@ -1045,7 +1045,8 @@ def test_judge_sheet_and_agreement_end_to_end(
     sheet.write_text(labelled, encoding="utf-8")
     checked = runner.invoke(app, ["judge", "agreement", str(sheet), str(key)])
     assert checked.exit_code == 0, checked.output
-    assert checked.stdout.splitlines()[:3] == [
+    assert checked.stdout.splitlines()[:4] == [
+        "Judge: ollama/gemma3:12b",
         "Labelled 6 answers.",
         "When the judge said PASS, you agreed 100% (6/6, 95% CI 52%-100%).",
         "When the judge said FAIL, you agreed no answers.",
@@ -1065,3 +1066,62 @@ def test_judge_commands_report_bad_files(tmp_path: Path) -> None:
     result = runner.invoke(app, ["judge", "agreement", str(sheet), str(key)])
     assert result.exit_code == 2
     assert "has no labels yet" in result.stderr
+
+
+def test_judge_fresh_sheet_and_rejudged_agreement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch)
+    report = tmp_path / "report.json"
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new"]
+    assert runner.invoke(app, [*args, "--format", "json", "--output", str(report)]).exit_code == 0
+    sheet1, key1 = tmp_path / "s1.csv", tmp_path / "k1.json"
+    assert (
+        runner.invoke(
+            app,
+            [
+                "judge",
+                "sheet",
+                str(report),
+                "--output",
+                str(sheet1),
+                "--key",
+                str(key1),
+                "--size",
+                "4",
+            ],
+        ).exit_code
+        == 0
+    )
+    sheet2, key2 = tmp_path / "s2.csv", tmp_path / "k2.json"
+    fresh = runner.invoke(
+        app,
+        [
+            "judge",
+            "sheet",
+            str(report),
+            "--output",
+            str(sheet2),
+            "--key",
+            str(key2),
+            "--size",
+            "4",
+            "--exclude-key",
+            str(key1),
+        ],
+    )
+    assert fresh.exit_code == 0, fresh.output
+    assert "Left out 4 answers that earlier sheets hold." in fresh.stdout
+    sheet1.write_text(
+        sheet1.read_text(encoding="utf-8")
+        .replace(",,\r\n", ",PASS,\r\n")
+        .replace(",,\n", ",PASS,\n"),
+        encoding="utf-8",
+    )
+    checked = runner.invoke(
+        app, ["judge", "agreement", str(sheet1), str(key1), "--report", str(report)]
+    )
+    assert checked.exit_code == 0, checked.output
+    assert checked.stdout.splitlines()[0] == "Judge: ollama/gemma3:12b"
+    assert "Verdicts from another report" in checked.stdout
