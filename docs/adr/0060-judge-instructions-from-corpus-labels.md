@@ -49,3 +49,18 @@ Four prompts had a **wrong reference** (the labeller's notes say "reference also
 - Every free-text answer is judged again (a new cache key), once.
 - Two sets of corpus labels: the first 200 (development) and the fresh sheet (test). The paper reports the test numbers, and the development numbers as the reason for the change.
 - A judge guided by one reference cannot catch a wrong reference. Dropping cases by hand does not scale, so the paper reports it as a limit: 5 of the 75 corpus cases (4 prompts) had a wrong reference.
+
+## Results (29 October 2026)
+
+The re-judged run (`run-v2`, 70 cases, 446 judge requests, every model answer from the cache) gave **3 REGRESSED** (app-07 text, app-19 and app-33 JSON), 1 IMPROVED and 66 INCONCLUSIVE. Of the 5 text regressions in ADR 0059, only app-07's is left. The judge now passes 516 of 560 free-text answers (92%).
+
+| Check | Agreed |
+|---|---|
+| Development labels (the first 200, check only): judge PASS | 82% (123 of 150) |
+| Development labels: judge FAIL | 67% (8 of 12) |
+| **Fresh sheet (100 answers, test): judge PASS** | **79% (54 of 68), 95% CI 68-88%** |
+| **Fresh sheet: judge FAIL** | **69% (22 of 32), 50-83%** |
+
+On the fresh sheet, agreement weighted to the report is 79% (kappa 0.47). Corrected, Qwen 2.5 passes 75% (63-85%) and Qwen 3 76% (64-85%), so on these apps the two models are about the same.
+
+The **probes** ([ADR 0058](0058-judge-probes.md)) show the price. Re-judged with these instructions and checked against the same hand labels, the judge caught **9 of 24** broken answers, down from 22: changed source 0 of 7 (was 7), hedged invention 2 of 8 (was 8), flipped meaning still 6 of 6, missing fact still 1 of 3. Paraphrases still pass 8 of 8. The demo's support prompt gives no source text, so the judge now treats a support reply as "something new" and lets invented links and details through. One instruction set traded one kind of mistake for the other, so [ADR 0061](0061-no-made-up-specifics.md) adds one narrow rule back.

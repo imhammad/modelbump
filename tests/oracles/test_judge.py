@@ -84,3 +84,4 @@ def test_the_judge_instructions_cover_the_corpus_mistakes() -> None:
     assert "The reference is one acceptable answer, not the only one" in SYSTEM
     assert "adding content is the job" in SYSTEM
     assert "what is done or still pending" in SYSTEM
+    assert "never accept made-up specifics about the app" in SYSTEM
