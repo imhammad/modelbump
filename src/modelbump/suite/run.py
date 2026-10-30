@@ -72,10 +72,15 @@ class Settings:
     judge: str | None = None
     """The model that judges free-text answers (ADR 0054), or None for property checks only."""
     judge_version: str = ""
+    offset: int = 0
+    """Scored answers use samples ``reference + offset`` onwards. The repair loop
+    confirms a patch on samples no earlier run used (ADR 0064)."""
 
     def __post_init__(self) -> None:
         if self.runs < 1:
             raise ValueError(f"runs must be at least 1, got {self.runs}")
+        if self.offset < 0:
+            raise ValueError(f"offset must be at least 0, got {self.offset}")
         if self.reference < 1:
             raise ValueError(f"reference must be at least 1, got {self.reference}")
 
@@ -225,7 +230,8 @@ def _scored(run: CaseRun, samples: Sequence[int], texts: Sequence[str]) -> list[
 
 
 async def _fixed(runs: Sequence[CaseRun], runner: Runner, settings: Settings) -> None:
-    samples = list(range(settings.reference, settings.reference + settings.runs))
+    first = settings.reference + settings.offset
+    samples = list(range(first, first + settings.runs))
     for run in runs:
         try:
             await _set_reference(run, runner, settings)
@@ -264,7 +270,7 @@ async def _sequential(runs: Sequence[CaseRun], runner: Runner, settings: Setting
         test = SequentialTest(alpha=settings.q / m, margin=settings.margin, max_runs=settings.runs)
         try:
             await _set_reference(run, runner, settings)
-            sample = settings.reference
+            sample = settings.reference + settings.offset
             while not test.done:
                 pair = [
                     request(run.case, settings, "old", sample),

@@ -69,3 +69,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0061](0061-no-made-up-specifics.md) | Fail made-up specifics about the app, and stop tuning the judge | Accepted |
 | [0062](0062-prompt-patches.md) | Describe a prompt fix as a patch to one LLM call, and test it like a model change | Accepted |
 | [0063](0063-candidate-patches-from-a-local-model.md) | Let a local model write candidate patches from the failing answers, and check each one before keeping it | Accepted |
+| [0064](0064-repair-loop-screen-then-confirm.md) | Screen candidates on the test's answers, then accept one only if fresh answers show every case of its call is no worse | Accepted |

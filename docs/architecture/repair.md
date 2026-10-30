@@ -73,6 +73,50 @@ The lines above only show the format. The proposer (`--model`, default `ollama/g
 
 Each candidate is an ordinary patch file (`modelbump-proposals/support.py-24.00.json`), so `repair show` and `test --patch` work on it as they are. `proposals.json` in the same folder lists every candidate with the proposer's one-line reason, and every refused answer. Proposing does not say a candidate works: that is the repair loop's job.
 
+## The repair loop
+
+`modelbump repair run` decides which candidates to keep ([ADR 0064](../adr/0064-repair-loop-screen-then-confirm.md)):
+
+```console
+$ modelbump repair run demo-suite.json modelbump-proposals --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
+Repair ollama/qwen2.5:7b -> ollama/qwen3:8b: screen each candidate on 10 runs, confirm the best candidate on 100 fresh runs (alpha 0.05, margin 0.10), free text judged by ollama/gemma3:12b.
+REPAIRED      support.py:24  (3 test cases)
+              screen: old 1.00, unpatched new 0.67
+                support.py-24.02.json: new 1.00
+                support.py-24.00.json: new 0.70
+              confirm support.py-24.02.json: accepted
+                support.py:24#1: old 100/100, patched new 99/100, lower bound -0.05 > -0.10
+                support.py:24#2: old 100/100, patched new 100/100, lower bound -0.04 > -0.10
+                support.py:24#3: old 98/100, patched new 99/100, lower bound -0.05 > -0.10
+Result: 1 of 1 call repaired.
+Wrote the accepted patches to modelbump-repair.json.
+```
+
+The lines above only show the format.
+
+```mermaid
+flowchart LR
+    cands[Candidates] --> screen[Screen: 10 answers per case,<br/>the test's samples]
+    screen --> best[Best by mean score]
+    best --> confirm[Confirm: 100 fresh answers<br/>per model per case]
+    confirm --> check{Every case of the call<br/>no worse than old - margin?}
+    check -- yes --> accept[Accepted patch]
+    check -- no --> reject[Not repaired]
+```
+
+**The guarantee, per call:** the chance of accepting a patch that leaves any test case of the call more than `--margin` worse than the old model is at most about `--alpha`. Picking the best candidate on the screening answers cannot inflate this, because the confirming answers are fresh draws. Every case has to pass on its own, so a case that a patch breaks counts as much as the case it fixes. The guarantee covers the inputs in the suite, so a call with more test cases gets a stronger check.
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| `--screen-runs` | 10 | Answers per case for each candidate when screening. |
+| `--confirm-runs` | 100 | Fresh answers per model per case to confirm. Fewer can only accept cases both models almost always pass. |
+| `--confirm-top` | 1 | Candidates to confirm per call, each at alpha divided by this number. |
+| `--alpha`, `--margin` | 0.05, 0.10 | The guarantee's chance and how much worse still counts as fine. |
+| `--output` | `modelbump-repair.json` | Patch file with the accepted patches, for `modelbump test --patch`. |
+| `--report` | none | Also write every screen and confirmation as JSON. |
+
+`--from-think`, `--to-think`, `--judge`, `--no-judge`, `--reference`, `--temperature`, `--max-tokens` and `--budget-requests` work as in `modelbump test`. Use the same values as the test that found the regression, so its answers come from the cache.
+
 ## What a patch can and cannot change
 
 ```mermaid
