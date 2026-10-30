@@ -28,7 +28,16 @@ from modelbump.oracles.probes import (
 from modelbump.oracles.probes import DEFAULT_SEED as DEFAULT_PROBE_SEED
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
-from modelbump.repair import apply_patches, call_of, patch_diff, read_patches
+from modelbump.repair import (
+    DEFAULT_CANDIDATES,
+    DEFAULT_PROPOSER,
+    apply_patches,
+    call_of,
+    patch_diff,
+    propose,
+    read_patches,
+    write_proposals,
+)
 from modelbump.runner import (
     Budget,
     BudgetExceeded,
@@ -808,6 +817,88 @@ def repair_show(
         typer.echo(
             f"  {call} has one test case, so an edit there could touch its inputs: check the diff."
         )
+
+
+@repair_app.command("propose")
+def repair_propose(
+    suite_file: Annotated[
+        Path,
+        typer.Argument(help="The suite file from `modelbump suite`.", exists=True, dir_okay=False),
+    ],
+    report_file: Annotated[
+        Path,
+        typer.Argument(
+            help="A `modelbump test --format json` report of that suite, run without a patch.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ],
+    model: Annotated[
+        str, typer.Option(help="The model that writes candidate patches, as endpoint/model.")
+    ] = DEFAULT_PROPOSER,
+    candidates: Annotated[
+        int, typer.Option(min=1, help="Answers asked per call; each can give one candidate.")
+    ] = DEFAULT_CANDIDATES,
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            help="Folder for the candidate patch files and proposals.json.", file_okay=False
+        ),
+    ] = Path("modelbump-proposals"),
+) -> None:
+    """Ask a model for candidate patches for every call with a REGRESSED case (ADR 0063).
+
+    Each candidate is a patch file you can check with `repair show` and test with
+    `modelbump test --patch`. Nothing here says a candidate works.
+    """
+    try:
+        suite_data = read_suite(suite_file)
+        report = json.loads(report_file.read_text(encoding="utf-8"))
+        endpoint, _ = resolve_model(model)
+        version = pin_versions([ChatRequest.ask(model, "version")])[0].model_version
+    except (ValueError, RunnerError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    if not endpoint.local:
+        typer.echo(
+            "Note: a free cloud tier is in use. The app's prompts leave this machine "
+            "and may be kept or read by the provider. Never send private code.",
+            err=True,
+        )
+    cache = ResponseCache()
+    budget = Budget()
+    runner = Runner(cache=cache, budget=budget)
+    try:
+        results = asyncio.run(
+            propose(
+                suite_data, report, runner, model=model, count=candidates, model_version=version
+            )
+        )
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    finally:
+        cache.close()
+    if not results:
+        typer.echo("No case REGRESSED in the report: nothing to repair.")
+        return
+    write_proposals(results, output_dir, model, version)
+    total = 0
+    for result in results:
+        found = len(result.candidates)
+        total += found
+        only = "" if result.evidence.edits_allowed else " (one test case: add_system only)"
+        typer.echo(
+            f"{result.evidence.call}: {found} {'candidate' if found == 1 else 'candidates'}, "
+            f"{len(result.refused)} refused{only}"
+        )
+        for sample, reason in result.refused:
+            typer.echo(f"  sample {sample} refused: {reason}")
+    typer.echo(
+        f"Wrote {total} candidate {'patch' if total == 1 else 'patches'} for "
+        f"{len(results)} {'call' if len(results) == 1 else 'calls'} to {output_dir}."
+    )
+    typer.echo(budget.summary(), err=True)
 
 
 judge_app = typer.Typer(

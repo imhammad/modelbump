@@ -969,6 +969,109 @@ def test_repair_show_errors(tmp_path: Path) -> None:
     assert "Error: case support.py:24#2: 'crashes' is found 0 times" in result.stderr
 
 
+def _demo_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
+    """The demo suite and a JSON report where support.py:24#1 REGRESSED."""
+    suite_file = _demo_suite(tmp_path)
+    report = tmp_path / "report.json"
+    real_init = Runner.__init__
+    _fake_models(monkeypatch, broken="crashes")
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new", "--no-judge"]
+    assert runner.invoke(app, [*args, "--format", "json", "--output", str(report)]).exit_code == 1
+    monkeypatch.setattr(Runner, "__init__", real_init)
+    return suite_file, report
+
+
+def _fake_proposer(monkeypatch: pytest.MonkeyPatch, answers: list[str]) -> list[dict[str, object]]:
+    seen: list[dict[str, object]] = []
+
+    def server(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": answers[body["seed"]]}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+            },
+        )
+
+    real_init = Runner.__init__
+
+    def init_with_fake_server(self: Runner, **options: object) -> None:
+        real_init(self, transport=httpx.MockTransport(server), **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Runner, "__init__", init_with_fake_server)
+    return seen
+
+
+def test_repair_propose_writes_candidates_to_test(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file, report = _demo_report(monkeypatch, tmp_path)
+    good = json.dumps({"add_system": "Reply with the label only.", "edits": [], "why": "Short."})
+    seen = _fake_proposer(monkeypatch, [good, good, "no idea"])
+    out = tmp_path / "proposals"
+    args = ["repair", "propose", str(suite_file), str(report), "--candidates", "3"]
+    result = runner.invoke(app, [*args, "--output-dir", str(out)])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines() == [
+        "support.py:24: 1 candidate, 2 refused",
+        "  sample 1 refused: the same as sample 0",
+        "  sample 2 refused: no JSON object in the answer",
+        f"Wrote 1 candidate patch for 1 call to {out}.",
+    ]
+    assert {body["model"] for body in seen} == {"gemma3:12b"}
+    assert "Spent: 3 requests" in result.stderr
+    # The candidate is a normal patch file: it can be shown and tested.
+    candidate = out / "support.py-24.00.json"
+    shown = runner.invoke(app, ["repair", "show", str(suite_file), str(candidate)])
+    assert shown.stdout.splitlines()[-1] == "The patch changes 3 test cases in 1 LLM call."
+
+
+def test_repair_propose_with_nothing_regressed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    report = tmp_path / "report.json"
+    real_init = Runner.__init__
+    _fake_models(monkeypatch)
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new", "--no-judge"]
+    assert runner.invoke(app, [*args, "--format", "json", "--output", str(report)]).exit_code == 0
+    monkeypatch.setattr(Runner, "__init__", real_init)
+    seen = _fake_proposer(monkeypatch, [])
+    result = runner.invoke(app, ["repair", "propose", str(suite_file), str(report)])
+    assert result.exit_code == 0
+    assert result.stdout == "No case REGRESSED in the report: nothing to repair.\n"
+    assert seen == []
+
+
+def test_repair_propose_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{}", encoding="utf-8")
+    result = runner.invoke(app, ["repair", "propose", str(suite_file), str(bad)])
+    assert result.exit_code == 2
+    assert "Error: the report has no cases" in result.stderr
+    result = runner.invoke(
+        app, ["repair", "propose", str(suite_file), str(bad), "--model", "nowhere/x"]
+    )
+    assert result.exit_code == 2
+    assert "Unknown endpoint" in result.stderr
+
+
+def test_repair_propose_warns_before_a_cloud_tier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file, report = _demo_report(monkeypatch, tmp_path)
+    _fake_proposer(monkeypatch, ["{}"])
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    args = ["repair", "propose", str(suite_file), str(report), "--candidates", "1"]
+    result = runner.invoke(app, [*args, "--model", "groq/p", "--output-dir", str(tmp_path / "out")])
+    assert "The app's prompts leave this machine" in result.stderr
+
+
 def test_test_budget_says_how_to_continue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     suite_file = _demo_suite(tmp_path)
     _fake_models(monkeypatch)

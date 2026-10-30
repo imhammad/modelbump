@@ -68,3 +68,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0060](0060-judge-instructions-from-corpus-labels.md) | Rewrite the judge's instructions from the corpus labels, drop cases with a wrong reference, and test on fresh labels | Accepted |
 | [0061](0061-no-made-up-specifics.md) | Fail made-up specifics about the app, and stop tuning the judge | Accepted |
 | [0062](0062-prompt-patches.md) | Describe a prompt fix as a patch to one LLM call, and test it like a model change | Accepted |
+| [0063](0063-candidate-patches-from-a-local-model.md) | Let a local model write candidate patches from the failing answers, and check each one before keeping it | Accepted |

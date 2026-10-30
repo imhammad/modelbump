@@ -56,6 +56,23 @@ Compared ollama/qwen2.5:7b -> ollama/qwen3:8b on 5 test cases, 3 patched for the
 
 The lines above only show the format; the verdicts depend on the models.
 
+## Candidate patches from a model
+
+`modelbump repair propose` asks a local model to write candidate patches for every call with a REGRESSED case ([ADR 0063](../adr/0063-candidate-patches-from-a-local-model.md)). It reads the suite and a JSON report of an unpatched run:
+
+```console
+$ modelbump test demo-suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none --format json --output report.json
+$ modelbump repair propose demo-suite.json report.json --candidates 5
+support.py:24: 3 candidates, 2 refused
+  sample 1 refused: the same as sample 0
+  sample 3 refused: does not fit the suite: case support.py:24#1: 'Could you add a dark mode?' is found 0 times; an edit must match exactly once
+Wrote 3 candidate patches for 1 call to modelbump-proposals.
+```
+
+The lines above only show the format. The proposer (`--model`, default `ollama/gemma3:12b`) sees the app's prompt, the old model's reference answer, and up to three failing new answers with the checks they failed. Each answer becomes a candidate only if it is a valid patch that fits the suite; the others are listed with the reason. A call with a single test case gets `add_system` candidates only, because there an edit could change the input without anyone noticing.
+
+Each candidate is an ordinary patch file (`modelbump-proposals/support.py-24.00.json`), so `repair show` and `test --patch` work on it as they are. `proposals.json` in the same folder lists every candidate with the proposer's one-line reason, and every refused answer. Proposing does not say a candidate works: that is the repair loop's job.
+
 ## What a patch can and cannot change
 
 ```mermaid
