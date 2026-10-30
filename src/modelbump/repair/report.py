@@ -15,7 +15,7 @@ def loop_line(settings: Settings, loop: LoopSettings) -> str:
     return (
         f"Repair {settings.old} -> {settings.new}: screen each candidate on "
         f"{loop.screen_runs} runs, confirm {best} on {loop.confirm_runs} fresh runs "
-        f"(alpha {loop.alpha:.2f}, margin {loop.margin:.2f})"
+        f"(alpha {loop.alpha:.2f}, margin {loop.margin:.2f}, max gap {loop.max_gap:.2f})"
         + (f", free text judged by {settings.judge}." if settings.judge is not None else ".")
     )
 
@@ -32,7 +32,7 @@ def _status(result: CallRepair) -> str:
         return "REPAIRED"
     if not result.screened:
         return "NO CANDIDATES"
-    if not result.confirmations:
+    if not result.confirmations and not result.skipped:
         return "NOT RUN"
     return "NOT REPAIRED"
 
@@ -51,6 +51,12 @@ def render_repair_text(
         for screened in result.screened:
             how = f"new {screened.new_mean:.2f}" if screened.error is None else screened.error
             lines.append(f"                {screened.file}: {how}")
+        for file in result.skipped:
+            screened = next(s for s in result.screened if s.file == file)
+            lines.append(
+                f"              confirm {file}: skipped, screen {screened.new_mean:.2f} is more "
+                f"than {loop.max_gap:.2f} below old"
+            )
         for confirmation in result.confirmations:
             verdict = "accepted" if confirmation.accepted else "rejected"
             lines.append(f"              confirm {confirmation.file}: {verdict}")
@@ -86,6 +92,7 @@ def render_repair_json(
         "top": loop.top,
         "alpha": loop.alpha,
         "margin": loop.margin,
+        "max_gap": loop.max_gap,
         "calls": [
             {
                 "call": r.call,
@@ -117,6 +124,7 @@ def render_repair_json(
                     }
                     for c in r.confirmations
                 ],
+                "skipped": list(r.skipped),
                 "accepted": None if r.accepted is None else r.accepted.file,
             }
             for r in results

@@ -37,6 +37,9 @@ from modelbump.suite.run import Method, Settings, SuiteRun, run_suite_on_models
 DEFAULT_SCREEN_RUNS = 10
 DEFAULT_CONFIRM_RUNS = 100
 DEFAULT_CONFIRM_TOP = 1
+DEFAULT_MAX_GAP = 0.25
+"""A candidate whose screen mean is further than this below the old model's is not
+confirmed (ADR 0066): it would almost surely fail, and rejecting is always safe."""
 CONFIRM_OFFSET = 10_000
 """Confirming answers start this many samples after the reference: fresh seeds."""
 
@@ -95,6 +98,8 @@ class CallRepair:
     screened: tuple[Screened, ...]
     """Best first; candidates that could not be run last."""
     confirmations: tuple[Confirmation, ...]
+    skipped: tuple[str, ...] = ()
+    """Candidates not confirmed because their screen mean was too low (ADR 0066)."""
 
     @property
     def accepted(self) -> Confirmation | None:
@@ -115,6 +120,7 @@ class LoopSettings:
     top: int = DEFAULT_CONFIRM_TOP
     alpha: float = 0.05
     margin: float = 0.10
+    max_gap: float = DEFAULT_MAX_GAP
 
     def __post_init__(self) -> None:
         if min(self.screen_runs, self.confirm_runs, self.top) < 1:
@@ -123,6 +129,8 @@ class LoopSettings:
             raise ValueError(f"alpha must be between 0 and 0.5, got {self.alpha}")
         if not 0 < self.margin < 1:
             raise ValueError(f"margin must be between 0 and 1, got {self.margin}")
+        if not 0 <= self.max_gap <= 1:
+            raise ValueError(f"max gap must be between 0 and 1, got {self.max_gap}")
 
 
 def read_candidates(folder: Path, suite: Suite) -> list[CallCandidates]:
@@ -204,8 +212,13 @@ async def repair_call(
     screened.sort(key=lambda s: (s.error is not None, -s.new_mean))
     confirm = replace(settings, runs=loop.confirm_runs, method=Method.FIXED, offset=CONFIRM_OFFSET)
     alpha = loop.alpha / loop.top
+    old_mean = mean_score(unpatched, "old") if clean else None
     confirmations: list[Confirmation] = []
+    skipped: list[str] = []
     for chosen in [s for s in screened if s.error is None][: loop.top]:
+        if old_mean is not None and chosen.new_mean < old_mean - loop.max_gap:
+            skipped.append(chosen.file)
+            continue
         run = await run_suite_on_models(
             cases, runner, confirm, apply_patches(cases, (chosen.patch,))
         )
@@ -233,9 +246,10 @@ async def repair_call(
         regressed=entry.regressed,
         cases=len(cases.cases),
         unpatched_mean=mean_score(unpatched, "new") if clean else None,
-        old_mean=mean_score(unpatched, "old") if clean else None,
+        old_mean=old_mean,
         screened=tuple(screened),
         confirmations=tuple(confirmations),
+        skipped=tuple(skipped),
     )
 
 

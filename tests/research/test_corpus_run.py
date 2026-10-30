@@ -192,3 +192,14 @@ def test_drop_case_and_out_folder(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert (stats["cases"], stats["dropped"]) == (2, 1)
     assert not (out / "runs" / "app-03.report.json").exists()
     assert not (corpus / "run.stats.json").exists()  # the corpus folder only gets read
+
+
+def test_main_with_another_new_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    corpus = write_corpus(tmp_path)
+    runner, seen = fake_runner()
+    out = tmp_path / "run-4b"
+    args = ["--corpus", str(corpus), "--out", str(out), "--apps", "1", "--new", "ollama/qwen3:4b"]
+    assert main(args, runner=runner) == 0
+    assert "ollama/qwen2.5:7b -> ollama/qwen3:4b" in capsys.readouterr().out
+    assert "qwen3:4b" in {body["model"] for body in seen}
+    assert "qwen3:8b" not in {body["model"] for body in seen}

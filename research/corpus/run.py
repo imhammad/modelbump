@@ -19,6 +19,10 @@ Run from the repo root (Ollama running, the three models pulled):
     uv run python -m research.corpus.run --apps 1     # a quick trial
     uv run python -m research.corpus.run              # every app (hours)
 
+``--new`` and ``--new-think`` change the new model (Phase 6 adds Qwen 3 4B, ADR
+0066). The old model, the picked calls and the generated inputs stay the
+same, so only the new model's answers and their judging are new.
+
 ``--out`` writes a run to another folder, so a later run (a new judge, say)
 keeps the earlier one. ``--drop-case`` leaves out a case by its merged id
 (``app-14/src/agenthatch/skill/reflection.py:202#1``), for prompts found broken
@@ -270,6 +274,10 @@ def main(argv: Sequence[str] | None = None, runner: Runner | None = None) -> int
     )
     parser.add_argument("--runs", type=int, default=RUNS, help=f"Answers per model ({RUNS}).")
     parser.add_argument("--seed", type=int, default=SEED, help=f"Seed for picking calls ({SEED}).")
+    parser.add_argument("--new", default=NEW, help=f"The new model ({NEW}).")
+    parser.add_argument(
+        "--new-think", default=NEW_THINK, help=f"Reasoning effort for the new model ({NEW_THINK})."
+    )
     args = parser.parse_args(argv)
     apps_file = args.corpus / "apps.jsonl"
     if not apps_file.exists():
@@ -278,17 +286,17 @@ def main(argv: Sequence[str] | None = None, runner: Runner | None = None) -> int
     apps = list(read_jsonl(apps_file))[: args.apps]
     settings = Settings(
         old=OLD,
-        new=NEW,
+        new=args.new,
         runs=args.runs,
         method=Method.FIXED,
-        new_think=NEW_THINK,
+        new_think=args.new_think,
         judge=DEFAULT_JUDGE,
     )
     cache: ResponseCache | None = None
     budget = Budget()
     generator_version = ""
     if runner is None:
-        names = [OLD, NEW, DEFAULT_JUDGE, DEFAULT_GENERATOR]
+        names = [OLD, args.new, DEFAULT_JUDGE, DEFAULT_GENERATOR]
         try:
             pinned = pin_versions([ChatRequest.ask(name, "version") for name in names])
         except RunnerError as error:

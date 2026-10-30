@@ -27,6 +27,7 @@ ModelBump is also a research project aiming at a peer-reviewed paper.
 - [Stats engine simulation study: error rates, power and cost](stats-sim.md)
 - [Stats engine on real models: Qwen 2.5 against Qwen 3](stats-real.md)
 - [Test suites on 40 real apps: the corpus, `modelbump test` and the judge](suites.md)
+- [Prompt repair on real regressions: fix rate, safety and cost](repair.md)
 - [Dataset card](https://github.com/imhammad/modelbump/blob/main/research/data/README.md): what the migration dataset holds, how it was built, its quality and limits
 
 ## Key prior work

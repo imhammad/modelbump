@@ -110,6 +110,7 @@ flowchart LR
 |--------|---------|--------------|
 | `--screen-runs` | 10 | Answers per case for each candidate when screening. |
 | `--confirm-runs` | 100 | Fresh answers per model per case to confirm. Fewer can only accept cases both models almost always pass. |
+| `--max-gap` | 0.25 | Skip confirming when the best screen mean is more than this below the old model's. Only ever rejects, so the guarantee holds. `1` turns it off. |
 | `--confirm-top` | 1 | Candidates to confirm per call, each at alpha divided by this number. |
 | `--alpha`, `--margin` | 0.05, 0.10 | The guarantee's chance and how much worse still counts as fine. |
 | `--output` | `modelbump-repair.json` | Patch file with the accepted patches, for `modelbump test --patch`. |

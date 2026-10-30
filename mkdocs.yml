@@ -124,6 +124,7 @@ nav:
       - adr/0063-candidate-patches-from-a-local-model.md
       - adr/0064-repair-loop-screen-then-confirm.md
       - adr/0065-repair-baselines.md
+      - adr/0066-rq3-repair-experiment.md
   - Engineering challenges:
       - engineering-challenges/index.md
       - engineering-challenges/001-release-pr-ci-never-runs.md
@@ -152,3 +153,4 @@ nav:
       - research/stats-sim.md
       - research/stats-real.md
       - research/suites.md
+      - research/repair.md

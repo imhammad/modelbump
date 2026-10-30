@@ -71,3 +71,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0063](0063-candidate-patches-from-a-local-model.md) | Let a local model write candidate patches from the failing answers, and check each one before keeping it | Accepted |
 | [0064](0064-repair-loop-screen-then-confirm.md) | Screen candidates on the test's answers, then accept one only if fresh answers show every case of its call is no worse | Accepted |
 | [0065](0065-repair-baselines.md) | Compare the repair with two baselines, a naive rewrite and a score-guided optimiser, built in-house | Accepted |
+| [0066](0066-rq3-repair-experiment.md) | Measure the repair on two migrations, with each regressed call widened to three cases, and count every request | Accepted |

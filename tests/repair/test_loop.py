@@ -120,7 +120,7 @@ def test_the_fix_is_screened_first_and_accepted() -> None:
 
 
 def test_a_patch_that_breaks_another_case_is_rejected() -> None:
-    result, _ = run([("bug.json", ALWAYS_BUG)])
+    result, _ = run([("bug.json", ALWAYS_BUG)], max_gap=1.0)  # confirm however it screens
     assert result.patch is None
     (confirmation,) = result.confirmations
     assert not confirmation.accepted
@@ -243,13 +243,13 @@ def test_repair_suite_and_reports() -> None:
         CallCandidates("support.py:24", ("support.py:24#1",), (("bug.json", ALWAYS_BUG),)),
         CallCandidates("support.py:24", ("support.py:24#1",), ()),
     ]
-    loop = LoopSettings(confirm_runs=50)
+    loop = LoopSettings(confirm_runs=50, max_gap=1.0)
     results = asyncio.run(repair_suite(SUITE, calls, runner, SETTINGS, loop))
     assert repair_summary(results) == "Result: 1 of 3 calls repaired."
     text = render_repair_text(results, SETTINGS, loop).splitlines()
     assert text[0] == (
         "Repair ollama/old -> ollama/new: screen each candidate on 10 runs, "
-        "confirm the best candidate on 50 fresh runs (alpha 0.05, margin 0.10)."
+        "confirm the best candidate on 50 fresh runs (alpha 0.05, margin 0.10, max gap 1.00)."
     )
     assert text[1] == "REPAIRED      support.py:24  (3 test cases)"
     assert "              screen: old 1.00, unpatched new 0.67" in text
@@ -279,3 +279,18 @@ def test_report_for_a_call_that_could_not_be_run() -> None:
     assert "fix.json: " in text
     multi = render_repair_text([result], SETTINGS, LoopSettings(top=2))
     assert "confirm the best 2 candidates" in multi
+
+
+def test_a_candidate_that_screens_far_below_the_old_model_is_not_confirmed() -> None:
+    result, seen = run([("bug.json", ALWAYS_BUG)])  # screens 0.33, old 1.00
+    assert result.skipped == ("bug.json",)
+    assert result.confirmations == () and result.patch is None
+    assert not [b for b in seen if b["seed"] >= CONFIRM_OFFSET]  # no fresh answers spent
+    text = render_repair_text([result], SETTINGS, LoopSettings())
+    assert "NOT REPAIRED  support.py:24  (3 test cases)" in text
+    assert "confirm bug.json: skipped, screen 0.33 is more than 0.25 below old" in text
+    data = json.loads(render_repair_json([result], SETTINGS, LoopSettings()))
+    assert data["calls"][0]["skipped"] == ["bug.json"]
+    assert data["max_gap"] == 0.25
+    with pytest.raises(ValueError, match="max gap"):
+        LoopSettings(max_gap=1.5)

@@ -42,6 +42,7 @@ from modelbump.repair import (
 from modelbump.repair.loop import (
     DEFAULT_CONFIRM_RUNS,
     DEFAULT_CONFIRM_TOP,
+    DEFAULT_MAX_GAP,
     DEFAULT_SCREEN_RUNS,
     LoopSettings,
     read_candidates,
@@ -1031,6 +1032,10 @@ def repair_run(
     margin: Annotated[
         float, typer.Option(help="How much worse than the old model still counts as fine.")
     ] = DEFAULT_MARGIN,
+    max_gap: Annotated[
+        float,
+        typer.Option(help="Do not confirm a candidate that screens this far below the old model."),
+    ] = DEFAULT_MAX_GAP,
     reference: Annotated[
         int,
         typer.Option(min=1, help="Old-model answers per case that set the reference (not scored)."),
@@ -1079,7 +1084,7 @@ def repair_run(
     try:
         cases_to_run = read_suite(suite_file)
         calls = read_candidates(proposals, cases_to_run)
-        loop = LoopSettings(screen_runs, confirm_runs, confirm_top, alpha, margin)
+        loop = LoopSettings(screen_runs, confirm_runs, confirm_top, alpha, margin, max_gap)
         settings = Settings(
             old=old,
             new=new,
