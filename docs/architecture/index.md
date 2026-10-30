@@ -25,7 +25,7 @@ flowchart LR
 | [Suites](suite.md) | Write the suite file and run it on two models (`modelbump test`) | v0.4.0 (Phase 5) |
 | [Runner](runner.md) | Call models with caching, retries and a cost budget | Done (Phase 3) |
 | [Stats engine](stats.md) | Decide REGRESSED / IMPROVED / EQUIVALENT / INCONCLUSIVE per test case | v0.3.0 (Phase 4) |
-| Prompt repair | Find prompt edits that fix regressions safely | Planned (Phase 6) |
+| [Prompt repair](repair.md) | Find prompt edits that fix regressions safely | Patches (Phase 6, in progress) |
 | Reporter / GitHub | Produce reports and open the upgrade PR | Planned (Phase 7) |
 
 Each stage gets its own page here when it is built.

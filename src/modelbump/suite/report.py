@@ -22,8 +22,10 @@ def method_line(result: SuiteRun) -> str:
         f"fixed k={s.runs} + BH" if chosen is Method.FIXED else f"sequential + e-BH, up to {s.runs}"
     )
     cases = len(result.cases)
+    patched = f", {result.patched} patched for the new model" if result.patched else ""
     return (
-        f"Compared {s.old} -> {s.new} on {cases} test {'case' if cases == 1 else 'cases'}: "
+        f"Compared {s.old} -> {s.new} on {cases} test {'case' if cases == 1 else 'cases'}"
+        f"{patched}: "
         f"{how} (q {s.q:.2f}, margin {s.margin:.2f}), "
         f"{s.reference} reference {'answer' if s.reference == 1 else 'answers'} per case"
         + (f", free text judged by {s.judge}." if s.judge is not None else ".")
@@ -58,6 +60,7 @@ def render_run_text(result: SuiteRun) -> str:
         lines.append(
             f"{run.verdict.value:<12} {case.id}  {case.oracle.kind.value}  "
             f"old {run.old_mean:.2f} -> new {run.new_mean:.2f}  ({len(run.new)} runs)"
+            + ("  [patched]" if run.patched is not None else "")
         )
         failures = run.new_failures
         if failures and run.verdict is not Verdict.EQUIVALENT:
@@ -86,12 +89,16 @@ def render_run_json(result: SuiteRun) -> str:
         "judge": s.judge,
         "judge_version": s.judge_version,
         "counts": {v.value: result.counts[v] for v in _ORDER},
+        "patched": result.patched,
         "cases": [
             {
                 "id": run.case.id,
                 "kind": run.case.oracle.kind.value,
                 "source": run.case.source,
                 "messages": [{"role": r, "content": t} for r, t in run.case.messages],
+                "patched_messages": None
+                if run.patched is None
+                else [{"role": r, "content": t} for r, t in run.patched.messages],
                 "reference_answer": run.reference_answers[0] if run.reference_answers else None,
                 "verdict": None if run.error is not None else run.verdict.value,
                 "error": run.error,

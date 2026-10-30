@@ -47,3 +47,4 @@ Every answer is cached, so running the same command again costs nothing. The exi
 | `--max-tokens` | 400 | Longest answer. |
 | `--budget-requests` | no limit | Stop after this many requests; run again with a higher limit to continue from the cache. |
 | `--format`, `--output` | text, screen | `json` has every answer, score and failed check. |
+| `--patch` | none | A [patch file](repair.md): the new model gets the patched prompts, everything else keeps the app's own ([ADR 0062](../adr/0062-prompt-patches.md)). |

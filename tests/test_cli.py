@@ -736,7 +736,10 @@ def _fake_models(monkeypatch: pytest.MonkeyPatch, broken: str = "") -> list[dict
         if body["messages"][0]["content"].startswith("You grade"):
             text = "FAIL" if "WRONG" in prompt else "PASS"  # the judge
         elif prompt.startswith("Ticket"):
-            text = "feature" if broken and broken in prompt and "new" in body["model"] else "bug"
+            # A patch that asks for the label only fixes the new model (ADR 0062).
+            fixed = "label only" in body["messages"][0]["content"]
+            wrong = broken and broken in prompt and "new" in body["model"] and not fixed
+            text = "feature" if wrong else "bug"
         else:
             # Every answer differs, so each one is a new question for the judge.
             text = f"A short answer from {body['model']}, number {body['seed']}. Done."
@@ -883,6 +886,87 @@ def test_test_fails_on_a_regression_and_writes_json(
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["cases"][0]["id"] == "support.py:24#1"
     assert data["cases"][0]["verdict"] == "REGRESSED"
+
+
+def _patch_file(tmp_path: Path, patch: dict[str, object]) -> Path:
+    path = tmp_path / "patch.json"
+    path.write_text(json.dumps({"version": 1, "patches": [patch]}), encoding="utf-8")
+    return path
+
+
+LABEL_ONLY: dict[str, object] = {
+    "call": "support.py:24",
+    "add_system": "Reply with the label only.",
+}
+
+
+def test_test_with_a_patch_sends_it_to_the_new_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    _fake_models(monkeypatch, broken="crashes")
+    patch = _patch_file(tmp_path, LABEL_ONLY)
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new", "--no-judge"]
+    result = runner.invoke(app, [*args, "--patch", str(patch)])
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith(
+        "Compared ollama/old -> ollama/new on 5 test cases, 3 patched for the new model:"
+    )
+    assert any("support.py:24#1" in line and "[patched]" in line for line in lines)
+    assert lines[-1] == "Result: 0 regressed, 0 inconclusive, 5 equivalent, 0 improved."
+
+
+def test_test_refuses_a_patch_that_does_not_fit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file = _demo_suite(tmp_path)
+    seen = _fake_models(monkeypatch)
+    patch = _patch_file(tmp_path, {"call": "nowhere.py:1", "add_system": "x"})
+    args = ["test", str(suite_file), "--from", "ollama/old", "--to", "ollama/new"]
+    result = runner.invoke(app, [*args, "--patch", str(patch)])
+    assert result.exit_code == 2
+    assert "Error: no case in the suite for call nowhere.py:1" in result.stderr
+    assert seen == []
+
+
+def test_repair_show_prints_a_diff_per_case(tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    patch = _patch_file(
+        tmp_path,
+        {
+            "call": "support.py:24",
+            "edits": [{"find": "one label", "replace": "exactly one label"}],
+        },
+    )
+    result = runner.invoke(app, ["repair", "show", str(suite_file), str(patch)])
+    assert result.exit_code == 0, result.output
+    out = result.stdout
+    assert out.count("--- support.py:24#") == 3
+    assert "-Answer with one label: bug, feature, question." in out
+    assert "+Answer with exactly one label: bug, feature, question." in out
+    assert out.splitlines()[-1] == "The patch changes 3 test cases in 1 LLM call."
+
+
+def test_repair_show_warns_when_a_call_has_one_case(tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    patch = _patch_file(tmp_path, {"call": "bot.py:14", "add_system": "Be brief."})
+    result = runner.invoke(app, ["repair", "show", str(suite_file), str(patch)])
+    assert result.exit_code == 0
+    assert result.stdout.splitlines()[-2:] == [
+        "The patch changes 1 test case in 1 LLM call.",
+        "  bot.py:14 has one test case, so an edit there could touch its inputs: check the diff.",
+    ]
+
+
+def test_repair_show_errors(tmp_path: Path) -> None:
+    suite_file = _demo_suite(tmp_path)
+    patch = _patch_file(
+        tmp_path, {"call": "support.py:24", "edits": [{"find": "crashes", "replace": "works"}]}
+    )
+    result = runner.invoke(app, ["repair", "show", str(suite_file), str(patch)])
+    assert result.exit_code == 2
+    assert "Error: case support.py:24#2: 'crashes' is found 0 times" in result.stderr
 
 
 def test_test_budget_says_how_to_continue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

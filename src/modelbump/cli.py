@@ -28,6 +28,7 @@ from modelbump.oracles.probes import (
 from modelbump.oracles.probes import DEFAULT_SEED as DEFAULT_PROBE_SEED
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
 from modelbump.registry import Status, load_registry
+from modelbump.repair import apply_patches, call_of, patch_diff, read_patches
 from modelbump.runner import (
     Budget,
     BudgetExceeded,
@@ -60,7 +61,7 @@ from modelbump.stats import (
     run_suite,
     simulated_suite,
 )
-from modelbump.suite import Method, Settings, build_suite, read_suite, suite_to_json
+from modelbump.suite import Method, Settings, Suite, build_suite, read_suite, suite_to_json
 from modelbump.suite.report import render_run_json, render_run_text, run_summary
 from modelbump.suite.run import (
     DEFAULT_MAX_TOKENS,
@@ -463,6 +464,14 @@ def test_models(
         Path | None,
         typer.Option(help="Write the report to this file instead of the screen.", dir_okay=False),
     ] = None,
+    patch: Annotated[
+        Path | None,
+        typer.Option(
+            help="A patch file: the new model gets the patched prompts (ADR 0062).",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
 ) -> None:
     """Run a suite on the old and the new model and decide each test case.
 
@@ -470,6 +479,7 @@ def test_models(
     """
     try:
         cases_to_run = read_suite(suite_file)
+        patched = None if patch is None else apply_patches(cases_to_run, read_patches(patch))
         settings = Settings(
             old=old,
             new=new,
@@ -512,7 +522,7 @@ def test_models(
     budget = Budget(max_requests=budget_requests)
     runner = Runner(cache=cache, budget=budget)
     try:
-        result = asyncio.run(run_suite_on_models(cases_to_run, runner, settings))
+        result = asyncio.run(run_suite_on_models(cases_to_run, runner, settings, patched))
     finally:
         cache.close()
     render = render_run_json if output_format is PromptFormat.JSON else render_run_text
@@ -744,6 +754,60 @@ def cache_clear(
     finally:
         cache.close()
     typer.echo(f"Deleted {deleted} stored answers.")
+
+
+repair_app = typer.Typer(
+    help="Patch an app's prompts so the new model does the job again.", no_args_is_help=True
+)
+app.add_typer(repair_app, name="repair")
+
+
+def _patched(suite_file: Path, patch_file: Path) -> tuple[Suite, Suite]:
+    try:
+        before = read_suite(suite_file)
+        return before, apply_patches(before, read_patches(patch_file))
+    except ValueError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=2) from error
+
+
+@repair_app.command("show")
+def repair_show(
+    suite_file: Annotated[
+        Path,
+        typer.Argument(help="The suite file from `modelbump suite`.", exists=True, dir_okay=False),
+    ],
+    patch_file: Annotated[
+        Path,
+        typer.Argument(help="The patch file to check.", exists=True, dir_okay=False),
+    ],
+) -> None:
+    """Show what a patch changes in each test case, without asking any model.
+
+    Exits with 2 when the patch does not fit the suite.
+    """
+    before, after = _patched(suite_file, patch_file)
+    changed = 0
+    calls: set[str] = set()
+    single: set[str] = set()
+    per_call = Counter(call_of(case) for case in before.cases)
+    for old, new in zip(before.cases, after.cases, strict=True):
+        if old.messages == new.messages:
+            continue
+        changed += 1
+        calls.add(call_of(old))
+        if per_call[call_of(old)] == 1:
+            single.add(call_of(old))
+        typer.echo(patch_diff(old, new))
+        typer.echo("")
+    typer.echo(
+        f"The patch changes {changed} test {'case' if changed == 1 else 'cases'} "
+        f"in {len(calls)} LLM {'call' if len(calls) == 1 else 'calls'}."
+    )
+    for call in sorted(single):
+        typer.echo(
+            f"  {call} has one test case, so an edit there could touch its inputs: check the diff."
+        )
 
 
 judge_app = typer.Typer(
