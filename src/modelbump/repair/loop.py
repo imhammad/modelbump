@@ -156,12 +156,12 @@ def read_candidates(folder: Path, suite: Suite) -> list[CallCandidates]:
     return found
 
 
-def _mean(run: SuiteRun, which: str) -> float:
+def mean_score(run: SuiteRun, which: str) -> float:
     means = [r.new_mean if which == "new" else r.old_mean for r in run.cases]
     return sum(means) / len(means)
 
 
-def _error(run: SuiteRun) -> str | None:
+def first_error(run: SuiteRun) -> str | None:
     return next((r.error for r in run.cases if r.error is not None), None)
 
 
@@ -192,12 +192,14 @@ async def repair_call(
         raise ValueError(f"no case in the suite for call {entry.call}")
     screen = replace(settings, runs=loop.screen_runs, method=Method.FIXED, offset=0)
     unpatched = await run_suite_on_models(cases, runner, screen)
-    clean = _error(unpatched) is None
+    clean = first_error(unpatched) is None
     screened: list[Screened] = []
     for file, patch in entry.candidates:
         run = await run_suite_on_models(cases, runner, screen, apply_patches(cases, (patch,)))
-        error = _error(run)
-        screened.append(Screened(file, patch, _mean(run, "new") if error is None else 0.0, error))
+        error = first_error(run)
+        screened.append(
+            Screened(file, patch, mean_score(run, "new") if error is None else 0.0, error)
+        )
     # Best patched mean first; ties keep the proposer's order. Failed runs go last.
     screened.sort(key=lambda s: (s.error is not None, -s.new_mean))
     confirm = replace(settings, runs=loop.confirm_runs, method=Method.FIXED, offset=CONFIRM_OFFSET)
@@ -207,7 +209,7 @@ async def repair_call(
         run = await run_suite_on_models(
             cases, runner, confirm, apply_patches(cases, (chosen.patch,))
         )
-        error = _error(run)
+        error = first_error(run)
         checks = (
             ()
             if error is not None
@@ -230,8 +232,8 @@ async def repair_call(
         call=entry.call,
         regressed=entry.regressed,
         cases=len(cases.cases),
-        unpatched_mean=_mean(unpatched, "new") if clean else None,
-        old_mean=_mean(unpatched, "old") if clean else None,
+        unpatched_mean=mean_score(unpatched, "new") if clean else None,
+        old_mean=mean_score(unpatched, "old") if clean else None,
         screened=tuple(screened),
         confirmations=tuple(confirmations),
     )

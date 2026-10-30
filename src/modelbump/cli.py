@@ -47,6 +47,8 @@ from modelbump.repair.loop import (
     read_candidates,
     repair_suite,
 )
+from modelbump.repair.optimize import DEFAULT_PER_ROUND, DEFAULT_ROUNDS, optimize
+from modelbump.repair.propose import Strategy
 from modelbump.repair.report import render_repair_json, render_repair_text
 from modelbump.runner import (
     Budget,
@@ -835,6 +837,30 @@ def repair_show(
         )
 
 
+def _report_settings(
+    report: dict[str, object], from_think: str | None, to_think: str | None
+) -> Settings:
+    """The test's settings, read back from its JSON report, to repeat its answers."""
+    try:
+        return Settings(
+            old=str(report["old"]),
+            new=str(report["new"]),
+            reference=int(str(report["reference"])),
+            temperature=float(str(report["temperature"])),
+            max_tokens=int(str(report["max_tokens"])),
+            old_think=from_think if from_think is not None else _optional(report.get("old_think")),
+            new_think=to_think if to_think is not None else _optional(report.get("new_think")),
+        )
+    except KeyError as error:
+        raise ValueError(
+            f"the report has no {error} setting: use `modelbump test --format json`"
+        ) from error
+
+
+def _optional(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
 @repair_app.command("propose")
 def repair_propose(
     suite_file: Annotated[
@@ -861,17 +887,50 @@ def repair_propose(
             help="Folder for the candidate patch files and proposals.json.", file_okay=False
         ),
     ] = Path("modelbump-proposals"),
+    strategy: Annotated[
+        Strategy,
+        typer.Option(
+            help="evidence (from the failing answers), or the baselines naive and iterative."
+        ),
+    ] = Strategy.EVIDENCE,
+    rounds: Annotated[
+        int, typer.Option(min=1, help="iterative: rounds of proposals.")
+    ] = DEFAULT_ROUNDS,
+    per_round: Annotated[
+        int, typer.Option(min=1, help="iterative: proposals per round.")
+    ] = DEFAULT_PER_ROUND,
+    screen_runs: Annotated[
+        int, typer.Option(min=1, help="iterative: answers per case to score each candidate.")
+    ] = DEFAULT_SCREEN_RUNS,
+    from_think: Annotated[
+        str | None,
+        typer.Option(help="iterative: reasoning effort for the old model, if the report has none."),
+    ] = None,
+    to_think: Annotated[
+        str | None,
+        typer.Option(help="iterative: reasoning effort for the new model, e.g. none for Qwen 3."),
+    ] = None,
 ) -> None:
     """Ask a model for candidate patches for every call with a REGRESSED case (ADR 0063).
 
     Each candidate is a patch file you can check with `repair show` and test with
-    `modelbump test --patch`. Nothing here says a candidate works.
+    `modelbump test --patch`. Nothing here says a candidate works. The naive and
+    iterative strategies are the baselines of ADR 0065; iterative also asks the
+    old and new models from the report, to score its candidates.
     """
+    settings = None
     try:
         suite_data = read_suite(suite_file)
         report = json.loads(report_file.read_text(encoding="utf-8"))
         endpoint, _ = resolve_model(model)
         version = pin_versions([ChatRequest.ask(model, "version")])[0].model_version
+        if strategy is Strategy.ITERATIVE:
+            settings = _pinned(
+                _report_settings(report, from_think, to_think),
+                suite_data,
+                str(report.get("judge") or DEFAULT_JUDGE),
+                no_judge=not report.get("judge"),
+            )
     except (ValueError, RunnerError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -885,11 +944,32 @@ def repair_propose(
     budget = Budget()
     runner = Runner(cache=cache, budget=budget)
     try:
-        results = asyncio.run(
-            propose(
-                suite_data, report, runner, model=model, count=candidates, model_version=version
+        if settings is not None:
+            results = asyncio.run(
+                optimize(
+                    suite_data,
+                    report,
+                    runner,
+                    settings,
+                    model=model,
+                    rounds=rounds,
+                    per_round=per_round,
+                    screen_runs=screen_runs,
+                    model_version=version,
+                )
             )
-        )
+        else:
+            results = asyncio.run(
+                propose(
+                    suite_data,
+                    report,
+                    runner,
+                    model=model,
+                    count=candidates,
+                    model_version=version,
+                    strategy=strategy,
+                )
+            )
     except ValueError as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -898,7 +978,7 @@ def repair_propose(
     if not results:
         typer.echo("No case REGRESSED in the report: nothing to repair.")
         return
-    write_proposals(results, output_dir, model, version)
+    write_proposals(results, output_dir, model, version, strategy)
     total = 0
     for result in results:
         found = len(result.candidates)

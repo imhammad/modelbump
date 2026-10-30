@@ -1156,6 +1156,78 @@ def test_repair_run_errors(tmp_path: Path) -> None:
     assert result.stdout == "No calls to repair in the proposals.\n"
 
 
+def test_repair_propose_naive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    suite_file, report = _demo_report(monkeypatch, tmp_path)
+    good = json.dumps({"add_system": "Use one word.", "edits": [], "why": "w"})
+    seen = _fake_proposer(monkeypatch, [good])
+    out = tmp_path / "naive"
+    args = ["repair", "propose", str(suite_file), str(report), "--candidates", "1"]
+    result = runner.invoke(app, [*args, "--strategy", "naive", "--output-dir", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "works well with ollama/new" in str(seen[0]["messages"])
+    assert json.loads((out / "proposals.json").read_text(encoding="utf-8"))["strategy"] == "naive"
+
+
+def test_repair_propose_iterative_scores_its_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file, report = _demo_report(monkeypatch, tmp_path)
+    data = json.loads(report.read_text(encoding="utf-8"))
+    assert (data["old_think"], data["new_think"]) == (None, None)
+    proposals = iter(["Be nice.", "Reply with the label only."])
+    seen: list[dict[str, object]] = []
+
+    def server(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        system = body["messages"][0]["content"]
+        prompt = body["messages"][-1]["content"]
+        if system.startswith("You fix prompts"):
+            text = json.dumps({"add_system": next(proposals), "edits": [], "why": "w"})
+        else:
+            wrong = "crashes" in prompt and body["model"] == "new" and "label only" not in system
+            text = "feature" if wrong else "bug"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+            },
+        )
+
+    real_init = Runner.__init__
+
+    def init_with_fake_server(self: Runner, **options: object) -> None:
+        real_init(self, transport=httpx.MockTransport(server), **options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Runner, "__init__", init_with_fake_server)
+    out = tmp_path / "iterative"
+    args = ["repair", "propose", str(suite_file), str(report), "--strategy", "iterative"]
+    result = runner.invoke(
+        app, [*args, "--rounds", "2", "--per-round", "1", "--output-dir", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines()[0] == "support.py:24: 2 candidates, 0 refused"
+    summary = json.loads((out / "proposals.json").read_text(encoding="utf-8"))
+    trace = summary["calls"][0]["trace"]
+    assert [(t["round"], round(t["screen_mean"], 2)) for t in trace] == [(0, 0.67), (1, 1.0)]
+    asked = [b for b in seen if str(b["messages"]).count("You fix prompts")]
+    assert '- score 0.67: add_system \\"Be nice.\\"' in json.dumps(asked[1]["messages"])
+
+
+def test_repair_propose_iterative_needs_the_test_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite_file, report = _demo_report(monkeypatch, tmp_path)
+    data = json.loads(report.read_text(encoding="utf-8"))
+    del data["max_tokens"]
+    report.write_text(json.dumps(data), encoding="utf-8")
+    args = ["repair", "propose", str(suite_file), str(report), "--strategy", "iterative"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "the report has no 'max_tokens' setting" in result.stderr
+
+
 def test_test_budget_says_how_to_continue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     suite_file = _demo_suite(tmp_path)
     _fake_models(monkeypatch)

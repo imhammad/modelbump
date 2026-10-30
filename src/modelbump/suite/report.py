@@ -86,6 +86,8 @@ def render_run_json(result: SuiteRun) -> str:
         "margin": s.margin,
         "temperature": s.temperature,
         "max_tokens": s.max_tokens,
+        "old_think": s.old_think,
+        "new_think": s.new_think,
         "judge": s.judge,
         "judge_version": s.judge_version,
         "counts": {v.value: result.counts[v] for v in _ORDER},

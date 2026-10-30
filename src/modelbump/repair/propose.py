@@ -8,12 +8,17 @@ candidates. Each candidate is checked against the suite before it is kept, so
 every written candidate can be shown and tested as it is (ADR 0062).
 
 Proposing only writes candidates. Nothing here says a candidate works: the
-repair loop tests them on fresh answers (a later step).
+repair loop tests them on fresh answers (ADR 0064).
+
+Strategies (ADR 0065): ``evidence`` (the default, above) and ``naive``, a
+baseline that sees only the prompt and the two model names. The third,
+``iterative``, needs model answers and lives in ``optimize.py``.
 """
 
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +30,7 @@ from modelbump.repair.patch import (
     call_of,
     patches_to_json,
 )
-from modelbump.runner import ChatRequest, Message, Runner, RunnerError
+from modelbump.runner import ChatRequest, ChatResult, Message, Runner, RunnerError
 from modelbump.suite.file import Suite, SuiteCase
 
 DEFAULT_PROPOSER = "ollama/gemma3:12b"
@@ -40,6 +45,17 @@ SYSTEM = (
     "You fix prompts for software that calls a large language model. "
     "You reply with JSON only, no other text."
 )
+
+
+class Strategy(StrEnum):
+    """How candidates are written (ADR 0065)."""
+
+    EVIDENCE = "evidence"
+    """From the reference answer and the failing answers (ModelBump's own)."""
+    NAIVE = "naive"
+    """Baseline: "make this prompt work with the new model", from the prompt alone."""
+    ITERATIVE = "iterative"
+    """Baseline: OPRO/COPRO-style rounds guided by screening scores only."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +93,8 @@ class Proposals:
     evidence: Evidence
     candidates: tuple[Candidate, ...]
     refused: tuple[tuple[int, str], ...]
+    trace: tuple[tuple[int, int, float], ...] = ()
+    """For the iterative strategy: (round, sample, screening mean) of each candidate."""
 
 
 def _failed(answer: Mapping[str, Any]) -> tuple[str, ...]:
@@ -138,49 +156,45 @@ def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "\n[... cut ...]"
 
 
-def proposal_request(
-    evidence: Evidence, old: str, new: str, model: str, sample: int, model_version: str = ""
-) -> ChatRequest:
-    """The request that asks ``model`` for one patch to ``evidence``'s prompt."""
-    lines = [
-        f"An app sends the prompt below to an LLM. It moved from the model {old} to {new}, "
-        "and the new model's answers now fail checks that the old model's answers passed.",
-        "",
-    ]
+def prompt_lines(evidence: Evidence) -> list[str]:
+    lines: list[str] = []
     for role, text in evidence.messages:
         lines += [
             f"--- {'user' if role == 'prompt' else role} message ---",
             _cut(text, MESSAGE_CHARS),
             "",
         ]
-    lines += [
-        "An answer from the old model (it passes):",
-        _cut(evidence.reference, ANSWER_CHARS),
-        "",
-    ]
-    lines.append("Answers from the new model (they fail):")
-    for number, (text, failed) in enumerate(evidence.failures, start=1):
-        why = f" [failed: {'; '.join(failed)}]" if failed else ""
-        lines.append(f"{number}. {_cut(text, ANSWER_CHARS)}{why}")
-    lines += [
-        "",
-        "Propose one small change to the prompt so that the new model's answers pass again. "
-        "Keep the task exactly the same: do not change what the prompt asks for, and do not "
-        "give the answer away. The app sends this prompt with many other inputs, so write "
-        "nothing specific to this input.",
+    return lines
+
+
+KEEP_THE_TASK = (
+    "Keep the task exactly the same: do not change what the prompt asks for, and do not "
+    "give the answer away. The app sends this prompt with many other inputs, so write "
+    "nothing specific to this input."
+)
+
+
+def reply_lines(evidence: Evidence) -> list[str]:
+    lines = [
         "",
         "Reply with only a JSON object with these keys:",
         '- "add_system": an instruction to add at the end of the system message, or "".',
     ]
     if evidence.edits_allowed:
-        lines += [
+        lines.append(
             '- "edits": a list of {"find": ..., "replace": ...} objects, or []. Copy each '
             '"find" exactly from the instructions above; it must appear there once, and '
-            "never inside the input.",
-        ]
+            "never inside the input."
+        )
     else:
         lines.append('- "edits": always [] for this prompt; use "add_system" only.')
     lines.append('- "why": one sentence on what the change fixes.')
+    return lines
+
+
+def proposer_request(
+    model: str, lines: Sequence[str], sample: int, model_version: str
+) -> ChatRequest:
     return ChatRequest(
         model,
         (Message("system", SYSTEM), Message("user", "\n".join(lines))),
@@ -190,6 +204,73 @@ def proposal_request(
         sample=sample,
         model_version=model_version,
     )
+
+
+def proposal_request(
+    evidence: Evidence, old: str, new: str, model: str, sample: int, model_version: str = ""
+) -> ChatRequest:
+    """The request that asks ``model`` for one patch to ``evidence``'s prompt."""
+    lines = [
+        f"An app sends the prompt below to an LLM. It moved from the model {old} to {new}, "
+        "and the new model's answers now fail checks that the old model's answers passed.",
+        "",
+        *prompt_lines(evidence),
+        "An answer from the old model (it passes):",
+        _cut(evidence.reference, ANSWER_CHARS),
+        "",
+        "Answers from the new model (they fail):",
+    ]
+    for number, (text, failed) in enumerate(evidence.failures, start=1):
+        why = f" [failed: {'; '.join(failed)}]" if failed else ""
+        lines.append(f"{number}. {_cut(text, ANSWER_CHARS)}{why}")
+    lines += [
+        "",
+        "Propose one small change to the prompt so that the new model's answers pass again. "
+        + KEEP_THE_TASK,
+        *reply_lines(evidence),
+    ]
+    return proposer_request(model, lines, sample, model_version)
+
+
+def naive_request(
+    evidence: Evidence, old: str, new: str, model: str, sample: int, model_version: str = ""
+) -> ChatRequest:
+    """The naive baseline: the prompt and the model names, no answers (ADR 0065)."""
+    lines = [
+        f"An app sends the prompt below to an LLM. It was written for the model {old}, "
+        f"and the app now uses {new} instead.",
+        "",
+        *prompt_lines(evidence),
+        f"Propose one small change to the prompt so that it works well with {new}. "
+        + KEEP_THE_TASK,
+        *reply_lines(evidence),
+    ]
+    return proposer_request(model, lines, sample, model_version)
+
+
+def check_answer(
+    suite: Suite,
+    evidence: Evidence,
+    candidates: Sequence[Candidate],
+    sample: int,
+    outcome: ChatResult | RunnerError,
+    model: str,
+) -> Candidate | str:
+    """A proposer's answer as a checked, new candidate, or why it is refused."""
+    if isinstance(outcome, RunnerError):
+        return f"the model call failed: {outcome}"
+    parsed = parse_proposal(outcome.text, evidence, f"proposed by {model}, sample {sample}")
+    if isinstance(parsed, str):
+        return parsed
+    patch, why = parsed
+    try:
+        apply_patches(suite, (patch,))
+    except PatchError as error:
+        return f"does not fit the suite: {error}"
+    for other in candidates:
+        if (other.patch.edits, other.patch.add_system) == (patch.edits, patch.add_system):
+            return f"the same as sample {other.sample}"
+    return Candidate(sample, patch, why)
 
 
 def parse_proposal(text: str, evidence: Evidence, note: str) -> tuple[PromptPatch, str] | str:
@@ -230,14 +311,18 @@ async def propose(
     model: str = DEFAULT_PROPOSER,
     count: int = DEFAULT_CANDIDATES,
     model_version: str = "",
+    strategy: Strategy = Strategy.EVIDENCE,
 ) -> list[Proposals]:
     """Up to ``count`` checked, distinct candidate patches for each call that regressed."""
     if count < 1:
         raise ValueError(f"count must be at least 1, got {count}")
+    if strategy is Strategy.ITERATIVE:
+        raise ValueError("the iterative strategy needs model answers: use optimize()")
+    make = naive_request if strategy is Strategy.NAIVE else proposal_request
     old, new = str(report.get("old", "the old model")), str(report.get("new", "the new model"))
     found = regressed_calls(suite, report)
     requests = [
-        proposal_request(evidence, old, new, model, sample, model_version)
+        make(evidence, old, new, model, sample, model_version)
         for evidence in found
         for sample in range(count)
     ]
@@ -248,31 +333,11 @@ async def propose(
         refused: list[tuple[int, str]] = []
         for sample in range(count):
             outcome = outcomes[index * count + sample]
-            if isinstance(outcome, RunnerError):
-                refused.append((sample, f"the model call failed: {outcome}"))
-                continue
-            parsed = parse_proposal(outcome.text, evidence, f"proposed by {model}, sample {sample}")
-            if isinstance(parsed, str):
-                refused.append((sample, parsed))
-                continue
-            patch, why = parsed
-            try:
-                apply_patches(suite, (patch,))
-            except PatchError as error:
-                refused.append((sample, f"does not fit the suite: {error}"))
-                continue
-            same = next(
-                (
-                    c.sample
-                    for c in candidates
-                    if (c.patch.edits, c.patch.add_system) == (patch.edits, patch.add_system)
-                ),
-                None,
-            )
-            if same is not None:
-                refused.append((sample, f"the same as sample {same}"))
-                continue
-            candidates.append(Candidate(sample, patch, why))
+            checked = check_answer(suite, evidence, candidates, sample, outcome, model)
+            if isinstance(checked, str):
+                refused.append((sample, checked))
+            else:
+                candidates.append(checked)
         results.append(Proposals(evidence, tuple(candidates), tuple(refused)))
     return results
 
@@ -283,7 +348,11 @@ def slug(call: str) -> str:
 
 
 def write_proposals(
-    results: Sequence[Proposals], folder: Path, model: str, model_version: str = ""
+    results: Sequence[Proposals],
+    folder: Path,
+    model: str,
+    model_version: str = "",
+    strategy: Strategy = Strategy.EVIDENCE,
 ) -> list[Path]:
     """One patch file per candidate, and ``proposals.json`` with what was refused and why."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -307,9 +376,19 @@ def write_proposals(
                 "edits_allowed": result.evidence.edits_allowed,
                 "candidates": files,
                 "refused": [{"sample": s, "reason": r} for s, r in result.refused],
+                "trace": [
+                    {"round": r, "sample": n, "screen_mean": round(mean, 4)}
+                    for r, n, mean in result.trace
+                ],
             }
         )
-    data = {"version": 1, "proposer": model, "proposer_version": model_version, "calls": summary}
+    data = {
+        "version": 1,
+        "strategy": strategy.value,
+        "proposer": model,
+        "proposer_version": model_version,
+        "calls": summary,
+    }
     (folder / "proposals.json").write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

@@ -117,6 +117,22 @@ flowchart LR
 
 `--from-think`, `--to-think`, `--judge`, `--no-judge`, `--reference`, `--temperature`, `--max-tokens` and `--budget-requests` work as in `modelbump test`. Use the same values as the test that found the regression, so its answers come from the cache.
 
+## Baselines
+
+`repair propose --strategy` picks how candidates are written ([ADR 0065](../adr/0065-repair-baselines.md)). Every strategy writes the same kind of candidate files, so `repair run` and its guarantee are the same for all of them.
+
+| Strategy | The proposer sees | Candidates |
+|---|---|---|
+| `evidence` (default) | The prompt, the old model's answer, failing new answers and their failed checks | `--candidates` (5) |
+| `naive` | The prompt and the two model names: "make it work well with the new model" | `--candidates` (5) |
+| `iterative` | The prompt, the models' scores, and every change tried so far with its score (OPRO/COPRO style, no answers) | `--rounds` × `--per-round` (3 × 2) |
+
+```console
+$ modelbump repair propose demo-suite.json report.json --strategy iterative --to-think none --output-dir iterative
+```
+
+The iterative strategy scores each candidate by running the new model with it (`--screen-runs`, 10 answers per case, on the same samples `repair run` screens), so it needs the old and new models as well as the proposer. It reads the test's settings from the report. `--from-think` and `--to-think` fill them in for reports written before v0.5.0. `proposals.json` lists each round's candidates with their scores under `trace`.
+
 ## What a patch can and cannot change
 
 ```mermaid
