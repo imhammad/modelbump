@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0](https://github.com/imhammad/modelbump/compare/v0.4.0...v0.5.0) (2026-10-31)
+
+
+### Features
+
+* **repair:** candidate patches from a local model ([#86](https://github.com/imhammad/modelbump/issues/86)) ([90732b6](https://github.com/imhammad/modelbump/commit/90732b6f832fbf83748eb9df7fd7d2e5389c8f06))
+* **repair:** naive and iterative baselines ([#89](https://github.com/imhammad/modelbump/issues/89)) ([7589abf](https://github.com/imhammad/modelbump/commit/7589abf09035edf69b57f34b117b20acc9e5f989))
+* **repair:** prompt patches tested on the new model only ([#84](https://github.com/imhammad/modelbump/issues/84)) ([b4f42cf](https://github.com/imhammad/modelbump/commit/b4f42cffe4f4927e31bdf15458993dcdef373bf6))
+* **repair:** screen candidates, confirm on fresh answers ([#87](https://github.com/imhammad/modelbump/issues/87)) ([9b169d7](https://github.com/imhammad/modelbump/commit/9b169d741fd7b23aaac823507c1b3ed21e9d9115))
+* **research:** RQ3 repair experiment on two migrations ([#90](https://github.com/imhammad/modelbump/issues/90)) ([0cf5df9](https://github.com/imhammad/modelbump/commit/0cf5df9e847cc129e283e13956928d9ecf4bf08b))
+
+
+### Bug Fixes
+
+* **research:** count proposer requests apart from the judge ([#92](https://github.com/imhammad/modelbump/issues/92)) ([802b82e](https://github.com/imhammad/modelbump/commit/802b82ea80ec9faced96151a2966008bf48b6cc4))
+* **research:** second migration uses Qwen 3 4B Instruct ([#91](https://github.com/imhammad/modelbump/issues/91)) ([35de866](https://github.com/imhammad/modelbump/commit/35de866998bb73be1c2de2e9612658fcdda909bd))
+
+
+### Documentation
+
+* **paper:** the author's rewrite of every section ([#88](https://github.com/imhammad/modelbump/issues/88)) ([8aaf6ab](https://github.com/imhammad/modelbump/commit/8aaf6ab6595834eee49cbf94c15e61e61b220aa1))
+* **repair:** RQ3 results and README for v0.5.0 ([#93](https://github.com/imhammad/modelbump/issues/93)) ([3686390](https://github.com/imhammad/modelbump/commit/368639052bd3564d8eeb6d96c166f582c5f2c446))
+
 ## [0.4.0](https://github.com/imhammad/modelbump/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 
