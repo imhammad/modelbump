@@ -51,6 +51,7 @@ from modelbump.repair.propose import (
     slug,
     write_proposals,
 )
+from modelbump.repair.propose import SYSTEM as PROPOSER_SYSTEM
 from modelbump.repair.propose import regressed_calls as evidence_of
 from modelbump.repair.report import render_repair_json
 from modelbump.runner import (
@@ -87,14 +88,25 @@ class Tally:
     tokens: Counter[str] = field(default_factory=Counter)
 
 
+def role_of(request: ChatRequest, roles: Mapping[str, str]) -> str:
+    """The role of a request: proposer by its system message, the others by model.
+
+    The proposer and the judge are the same model by default, so the model
+    name alone cannot tell them apart.
+    """
+    if request.messages and request.messages[0].content == PROPOSER_SYSTEM:
+        return "proposer"
+    return roles.get(request.model, "other")
+
+
 def counted(runner: Runner, tally: Tally, roles: Mapping[str, str]) -> Callable[[], None]:
-    """Count every request ``runner`` sends, by the role of its model. Returns an undo."""
+    """Count every request ``runner`` sends, by its role (``role_of``). Returns an undo."""
     original = runner.run_each
 
     async def run_each(requests: Sequence[ChatRequest]) -> list[ChatResult | RunnerError]:
         outcomes = await original(requests)
         for request, outcome in zip(requests, outcomes, strict=True):
-            role = roles.get(request.model, "other")
+            role = role_of(request, roles)
             tally.requests[role] += 1
             if isinstance(outcome, ChatResult):
                 tally.tokens[role] += outcome.output_tokens
@@ -229,7 +241,6 @@ async def repair_one(
     """Write candidates with one strategy and run the loop on them."""
     tally = Tally()
     roles = {
-        proposer: "proposer",
         settings.old: "old",
         settings.new: "new",
         **({settings.judge: "judge"} if settings.judge else {}),
@@ -396,6 +407,7 @@ async def run_migration(
                 progress(
                     f"{migration} {name} [{strategy.value}]: {row.status} "
                     f"({row.cases} cases, best screen {row.best_screen}, old {row.old_mean})"
+                    + (", blocked for collateral" if row.blocked_for_collateral else "")
                 )
     return rows, notes
 

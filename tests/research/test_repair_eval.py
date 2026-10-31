@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from modelbump.repair.loop import CallRepair, CaseCheck, Confirmation
+from modelbump.repair.propose import SYSTEM as PROPOSER_SYSTEM
 from modelbump.runner import ChatRequest, Runner
 from modelbump.suite import read_suite
 from research.corpus.run import run_corpus
@@ -103,12 +104,16 @@ def test_counted_tallies_by_role_and_undoes(tmp_path: Path) -> None:
     runner, _ = fake_runner()
     tally = Tally()
     original = runner.run_each
-    undo = counted(runner, tally, {"ollama/a": "old"})
+    undo = counted(runner, tally, {"ollama/a": "old", "ollama/g": "judge"})
+    proposal = ChatRequest.ask("ollama/g", "fix it", system=PROPOSER_SYSTEM)
     asyncio.run(
-        runner.run_each([ChatRequest.ask("ollama/a", "hi"), ChatRequest.ask("ollama/b", "x")])
+        runner.run_each(
+            [ChatRequest.ask("ollama/a", "hi"), ChatRequest.ask("ollama/b", "x"), proposal]
+        )
     )
-    assert tally.requests == {"old": 1, "other": 1}
-    assert tally.fresh == {"old": 1, "other": 1}
+    # The proposer is told apart from the judge although both are ollama/g.
+    assert tally.requests == {"old": 1, "other": 1, "proposer": 1}
+    assert tally.fresh == {"old": 1, "other": 1, "proposer": 1}
     assert tally.tokens["old"] == 5
     undo()
     assert runner.run_each == original
