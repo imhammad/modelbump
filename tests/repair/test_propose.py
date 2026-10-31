@@ -149,6 +149,20 @@ def test_unusable_proposals(text: str, reason: str) -> None:
     assert isinstance(parsed, str) and reason in parsed
 
 
+def test_unusable_edits_are_dropped_when_there_is_an_add_system() -> None:
+    both = {
+        "add_system": "Be strict.",
+        "edits": [{"find": "x", "replace": "x"}],
+        "why": "w",
+    }
+    parsed = parse_proposal(json.dumps(both), EVIDENCE, "proposed")
+    assert not isinstance(parsed, str)
+    assert parsed[0].edits == () and parsed[0].add_system == "Be strict."
+    assert parsed[0].note.startswith("proposed; edits dropped: ")
+    alone = parse_proposal(json.dumps({**both, "add_system": ""}), EVIDENCE, "")
+    assert isinstance(alone, str) and "replaces text with itself" in alone
+
+
 def test_edits_are_dropped_where_only_add_system_is_allowed() -> None:
     single = Evidence(**{**_fields(EVIDENCE), "cases": 1})
     both = {**EDIT, "add_system": "Be strict."}
@@ -169,12 +183,16 @@ def test_propose_keeps_checked_distinct_candidates() -> None:
             2: json.dumps(OUTSIDE),
             3: "?",
             4: json.dumps(EDIT),
+            5: json.dumps({**OUTSIDE, "add_system": "Be brief."}),
         }
     )
-    results = asyncio.run(propose(SUITE, report(), runner, model="ollama/p", count=5))
-    assert len(seen) == 5 and {body["model"] for body in seen} == {"p"}
+    results = asyncio.run(propose(SUITE, report(), runner, model="ollama/p", count=6))
+    assert len(seen) == 6 and {body["model"] for body in seen} == {"p"}
     (result,) = results
-    assert [c.sample for c in result.candidates] == [0, 4]
+    assert [c.sample for c in result.candidates] == [0, 4, 5]
+    salvaged = result.candidates[2].patch
+    assert (salvaged.edits, salvaged.add_system) == ((), "Be brief.")
+    assert "edits dropped: case support.py:24#1:" in salvaged.note
     assert result.candidates[0].why == "It adds words."
     assert result.candidates[1].patch.note == "proposed by ollama/p, sample 4"
     refused = dict(result.refused)

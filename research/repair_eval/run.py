@@ -69,7 +69,8 @@ from modelbump.synth.cases import CaseResult, SiteCases, TestCase, find_cases
 from modelbump.synth.generate import DEFAULT_GENERATOR, fill, generation_request, parse_values
 from research.filtering.filter import read_jsonl, write_jsonl
 
-RUNS = [Path("research/data/corpus/run-v3"), Path("research/data/corpus/run-qwen3-4b")]
+RUNS = [Path("research/data/corpus/run-v3"), Path("research/data/corpus/run-qwen3-4b-instruct")]
+"""The second migration uses Qwen 3 4B Instruct: the ``qwen3:4b`` tag only thinks (ADR 0067)."""
 EXTRA_CASES = 2
 WIDEN_SAMPLE = 100
 """Sample number of the generation request that widens a call: not one the corpus used."""

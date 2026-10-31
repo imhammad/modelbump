@@ -266,7 +266,9 @@ def check_answer(
     try:
         apply_patches(suite, (patch,))
     except PatchError as error:
-        return f"does not fit the suite: {error}"
+        if not (patch.edits and patch.add_system):
+            return f"does not fit the suite: {error}"
+        patch = _without_edits(patch.call, patch.add_system, patch.note, str(error))
     for other in candidates:
         if (other.patch.edits, other.patch.add_system) == (patch.edits, patch.add_system):
             return f"the same as sample {other.sample}"
@@ -299,8 +301,15 @@ def parse_proposal(text: str, evidence: Evidence, note: str) -> tuple[PromptPatc
     try:
         patch = PromptPatch(evidence.call, tuple(edits), add_system.strip(), note)
     except PatchError as error:
-        return str(error)
+        if not edits or not add_system.strip():
+            return str(error)
+        patch = _without_edits(evidence.call, add_system, note, str(error))
     return patch, why
+
+
+def _without_edits(call: str, add_system: str, note: str, error: str) -> PromptPatch:
+    """Keep a proposal's add_system when its edits are unusable (ADR 0067)."""
+    return PromptPatch(call, (), add_system.strip(), f"{note}; edits dropped: {error}")
 
 
 async def propose(

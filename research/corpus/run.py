@@ -19,8 +19,8 @@ Run from the repo root (Ollama running, the three models pulled):
     uv run python -m research.corpus.run --apps 1     # a quick trial
     uv run python -m research.corpus.run              # every app (hours)
 
-``--new`` and ``--new-think`` change the new model (Phase 6 adds Qwen 3 4B, ADR
-0066). The old model, the picked calls and the generated inputs stay the
+``--new`` and ``--new-think`` change the new model (Phase 6 adds Qwen 3 4B Instruct,
+ADRs 0066 and 0067). The old model, the picked calls and the generated inputs stay the
 same, so only the new model's answers and their judging are new.
 
 ``--out`` writes a run to another folder, so a later run (a new judge, say)

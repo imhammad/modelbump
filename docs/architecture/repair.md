@@ -69,7 +69,7 @@ support.py:24: 3 candidates, 2 refused
 Wrote 3 candidate patches for 1 call to modelbump-proposals.
 ```
 
-The lines above only show the format. The proposer (`--model`, default `ollama/gemma3:12b`) sees the app's prompt, the old model's reference answer, and up to three failing new answers with the checks they failed. Each answer becomes a candidate only if it is a valid patch that fits the suite; the others are listed with the reason. A call with a single test case gets `add_system` candidates only, because there an edit could change the input without anyone noticing.
+The lines above only show the format. The proposer (`--model`, default `ollama/gemma3:12b`) sees the app's prompt, the old model's reference answer, and up to three failing new answers with the checks they failed. Each answer becomes a candidate only if it is a valid patch that fits the suite; the others are listed with the reason. When an answer has an `add_system` and edits that do not fit, the edits are dropped and the `add_system` is kept, with the reason in the patch's note ([ADR 0067](../adr/0067-instruct-model-and-salvaged-proposals.md)). A call with a single test case gets `add_system` candidates only, because there an edit could change the input without anyone noticing.
 
 Each candidate is an ordinary patch file (`modelbump-proposals/support.py-24.00.json`), so `repair show` and `test --patch` work on it as they are. `proposals.json` in the same folder lists every candidate with the proposer's one-line reason, and every refused answer. Proposing does not say a candidate works: that is the repair loop's job.
 

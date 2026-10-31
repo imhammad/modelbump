@@ -1,6 +1,6 @@
 # ADR 0066: Measure the repair on two migrations, with each regressed call widened to three cases, and count every request
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by [ADR 0067](0067-instruct-model-and-salvaged-proposals.md) (the second model is Qwen 3 4B Instruct)
 - **Date:** 2026-10-30
 
 ## Context

@@ -72,3 +72,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0064](0064-repair-loop-screen-then-confirm.md) | Screen candidates on the test's answers, then accept one only if fresh answers show every case of its call is no worse | Accepted |
 | [0065](0065-repair-baselines.md) | Compare the repair with two baselines, a naive rewrite and a score-guided optimiser, built in-house | Accepted |
 | [0066](0066-rq3-repair-experiment.md) | Measure the repair on two migrations, with each regressed call widened to three cases, and count every request | Accepted |
+| [0067](0067-instruct-model-and-salvaged-proposals.md) | Use Qwen 3 4B Instruct for the second migration, and keep a proposal's added instruction when its edits do not fit | Accepted |
