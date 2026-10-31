@@ -51,7 +51,40 @@ Every request is counted by role (proposer, old, new, judge), with and without t
 
 ## Results
 
-To be filled in Step P6-6, from the full run.
+Run on 31 October 2026 on a 16 GB MacBook Air, all models local and free. In both migrations the same three calls regressed (app-33 aside): a numbered-list rule at app-05, the tone of a memory summary at app-07, and a JSON key at app-19. That gives 6 regressed calls, each tried with every strategy.
+
+| Migration | Call | Output | Cases | evidence | naive | iterative |
+|---|---|---|---|---|---|---|
+| Qwen 3 8B | app-05 `demo.py:93` | text | 1 | **REPAIRED** | skipped | rejected |
+| Qwen 3 8B | app-07 `memory.py:817` | text | 3 | rejected (collateral) | skipped | skipped |
+| Qwen 3 8B | app-19 `llm.py:387` | JSON | 1 | skipped | skipped | skipped |
+| Qwen 3 4B Instruct | app-05 `demo.py:93` | text | 1 | rejected | skipped | **REPAIRED** |
+| Qwen 3 4B Instruct | app-07 `memory.py:817` | text | 3 | rejected | rejected | skipped |
+| Qwen 3 4B Instruct | app-19 `llm.py:387` | JSON | 1 | skipped | skipped | skipped |
+
+*Skipped:* the best candidate screened more than 0.25 below the old model, so it was not confirmed. *Rejected:* confirmed on 100 fresh answers per model per case and found worse than the old model on at least one case. *Collateral:* the candidate fixed the regressed case but broke another case of the call. The calls with one case could not be widened (no input slots to fill, or no new inputs came back).
+
+| Strategy | Repaired | 95% CI (Wilson) | Rejected | Skipped | Blocked for collateral | Requests per call (proposer / old / new / judge) |
+|---|---|---|---|---|---|---|
+| evidence | 1 of 6 | 3% to 56% | 3 | 2 | 1 | 5 / 244 / 215 / 390 (854) |
+| naive | 0 of 6 | 0% to 39% | 1 | 5 | 0 | 5 / 145 / 122 / 210 (481) |
+| iterative | 1 of 6 | 3% to 56% | 1 | 4 | 0 | 6 / 307 / 243 / 400 (957) |
+| no repair | 0 of 6 | 0% to 39% | | | | 0 |
+
+Requests include answers served from the cache, so each one would be a paid request on a cloud API. Across both migrations, 2 of the 6 calls were repaired by at least one strategy.
+
+### What the run shows
+
+1. **Repair is possible but not common.** Prompt changes repaired 2 of 6 real regressions, both on the same call. The intervals are wide: this is a case study of six calls, not a precise rate.
+2. **The safety check matters.** Both accepted patches passed the non-inferiority check on every case of their call. Twice a candidate looked fine and was stopped. On the 4B app-05 call, the evidence candidate scored 1.00 on its 10 screening answers and then failed on 100 fresh ones. On the 8B app-07 call, the evidence candidate fixed the regressed case and broke another of the call's cases.
+3. **One test case overstates repair.** With one case per call, the loop repaired app-07 earlier (old 77 of 100, patched new 100 of 100, [ADR 0065](../adr/0065-repair-baselines.md)). With 3 cases, no strategy did. A fix judged on a single input can be a fix for that input only.
+4. **Seeing the failures helps, asking for a rewrite does not.** The naive rewrite repaired nothing, and 5 of its 6 runs were too far behind to confirm. On the 4B app-05 call its best candidate screened at 0.00. The evidence and iterative strategies each repaired one call. The iterative strategy cost the most (about 960 requests per call), because it screens every candidate it writes.
+5. **Some regressions are not prompt problems.** At app-19 the new models drop a required JSON key, and no candidate from any strategy screened above 0.43 against the old model's 1.00.
+6. **Skipping saves most of the cost.** 11 of the 18 strategy runs stopped after screening. Each skip saves 100 answers per model per case, plus judging for free text.
+
+### Limits
+
+Six calls from three call sites, two migrations in one model family, one proposer (Gemma 3 12B) and one judge (the same model, which agrees with hand labels on 83% of answers, [Test suites on real apps](suites.md)). Regressions were found at k = 10, so only large ones show up. app-33 was left out by hand, below.
 
 ## The case left out
 

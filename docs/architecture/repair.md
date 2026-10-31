@@ -1,6 +1,6 @@
 # Prompt repair
 
-When a case REGRESSED after a model change, the fix is often in the prompt: the new model needs an instruction the old one did not. Prompt repair finds and tests such fixes. Phase 6 builds it in steps; this page grows with each one.
+When a case REGRESSED after a model change, the fix is often in the prompt: the new model needs an instruction the old one did not. Prompt repair finds and tests such fixes. How well it works on real regressions: [Prompt repair on real regressions](../research/repair.md).
 
 ## Patches
 
