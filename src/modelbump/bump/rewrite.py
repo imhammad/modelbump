@@ -14,11 +14,15 @@ each into an edit of exactly the characters the scanner found:
   ``claude-...@20240620``) are left alone, because the new model's platform
   ID cannot be worked out from its provider ID.
 
+With an environment variable name, whole string literals in Python are
+also moved to that variable (:mod:`modelbump.bump.config`, ADR 0069).
+
 Every place left alone is listed with its reason, so nothing is skipped
 silently. Nothing is written until :func:`apply_plan`, which refuses a file
 that changed since the plan was made.
 """
 
+import ast
 import difflib
 import re
 from collections.abc import Sequence
@@ -26,8 +30,17 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from modelbump.bump.config import (
+    check_env_name,
+    env_file_text,
+    env_lookup,
+    import_position,
+    movable,
+    newline_of,
+)
 from modelbump.registry import Registry
 from modelbump.scanner import Context, Finding, scan_path
+from modelbump.scanner.context import file_kind
 
 # A model ID as people write it in code. Checked on the new ID so a bump can
 # never write quotes, spaces or code into a file.
@@ -71,6 +84,10 @@ class Edit:
     """The ID exactly as written."""
     new: str
     context: Context
+    moved: bool = False
+    """True when the literal now reads the environment variable."""
+    movable: bool = False
+    """True when the literal could read an environment variable (see ``env``)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +98,8 @@ class FileChange:
     before: str
     after: str
     edits: tuple[Edit, ...]
+    created: bool = False
+    """True for a file the bump creates (``.env.example``)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +119,22 @@ class BumpPlan:
     changes: tuple[FileChange, ...]
     skipped: tuple[Skipped, ...]
     files_scanned: int
+    env: str | None = None
+    """The environment variable hard-coded IDs were moved to, if any."""
 
     @property
     def edits(self) -> tuple[Edit, ...]:
         return tuple(edit for change in self.changes for edit in change.edits)
+
+    @property
+    def moved(self) -> int:
+        """Places that now read the environment variable."""
+        return sum(edit.moved for edit in self.edits)
+
+    @property
+    def movable(self) -> int:
+        """Places that hard-code the model and could read an environment variable."""
+        return sum(edit.movable for edit in self.edits)
 
 
 def check_model_id(model_id: str) -> str:
@@ -129,10 +160,21 @@ def plan_bump(
     *,
     exclude: Sequence[str] = (),
     include_docs: bool = False,
+    env: str | None = None,
 ) -> BumpPlan:
-    """Plan the change from ``old`` to ``new`` under ``root`` (a folder or a file)."""
+    """Plan the change from ``old`` to ``new`` under ``root`` (a folder or a file).
+
+    With ``env``, whole string literals in Python read that environment
+    variable instead, with ``new`` as the default, and ``.env.example`` in the
+    root folder gets ``ENV=new`` when it does not set the variable yet.
+    """
     check_model_id(old)
     check_model_id(new)
+    if env is not None:
+        try:
+            check_env_name(env)
+        except ValueError as error:
+            raise BumpError(str(error)) from error
     forms = old_forms(old, registry)
     if new in forms:
         raise BumpError(f"{new} is the same model as {old}")
@@ -162,9 +204,12 @@ def plan_bump(
         except UnicodeDecodeError:
             skipped.extend(Skipped(f, SkipReason.NOT_UTF8) for f in findings)
             continue
-        changes.append(_change(path, before, findings, new))
+        changes.append(_change(path, before, findings, new, env))
+    moved = any(edit.moved for change in changes for edit in change.edits)
+    if env is not None and moved and root.is_dir():
+        changes = _with_env_file(base, changes, env, new)
     skipped.sort(key=lambda s: (s.finding.path, s.finding.line, s.finding.column))
-    return BumpPlan(old, new, tuple(changes), tuple(skipped), result.files_scanned)
+    return BumpPlan(old, new, tuple(changes), tuple(skipped), result.files_scanned, env)
 
 
 def _skip_reason(finding: Finding, forms: frozenset[str], include_docs: bool) -> SkipReason | None:
@@ -177,33 +222,100 @@ def _skip_reason(finding: Finding, forms: frozenset[str], include_docs: bool) ->
     return None
 
 
-def _change(path: str, before: str, findings: Sequence[Finding], new: str) -> FileChange:
+def _change(
+    path: str, before: str, findings: Sequence[Finding], new: str, env: str | None
+) -> FileChange:
     """Edit ``before`` at every finding, checking each finding's text first."""
+    parsed = file_kind(path) == "python" and _parses(before)
+    change = _edit(path, before, findings, new, env, parsed)
+    if parsed and env is not None and not _parses(change.after):
+        # A safety net: if a swap would break the syntax, keep every literal.
+        change = _edit(path, before, findings, new, None, parsed)
+    return change
+
+
+def _edit(
+    path: str,
+    before: str,
+    findings: Sequence[Finding],
+    new: str,
+    env: str | None,
+    parsed: bool,
+) -> FileChange:
     starts = [0]
     for line in before.splitlines(keepends=True):
         starts.append(starts[-1] + len(line))
-    spans: list[tuple[int, int]] = []
+    spans: list[tuple[int, int, str]] = []
     edits: list[Edit] = []
     for finding in findings:
         offset = starts[finding.line - 1] + finding.column - 1
         end = offset + len(finding.model_id)
         if before[offset:end] != finding.model_id:
             raise BumpError(f"{path}:{finding.line}: the text changed while it was read")
-        spans.append((offset, end))
+        can_move = parsed and movable(finding, before, offset, end)
+        if can_move and env is not None:
+            spans.append((offset - 1, end + 1, env_lookup(env, new)))
+        else:
+            spans.append((offset, end, new))
         edits.append(
-            Edit(path, finding.line, finding.column, finding.model_id, new, finding.context)
+            Edit(
+                path,
+                finding.line,
+                finding.column,
+                finding.model_id,
+                new,
+                finding.context,
+                moved=can_move and env is not None,
+                movable=can_move,
+            )
         )
+    if any(edit.moved for edit in edits):
+        position = import_position(before)
+        if position is not None:
+            spans.append((position, position, "import os" + newline_of(before)))
     after = before
-    for offset, end in sorted(spans, reverse=True):
-        after = after[:offset] + new + after[end:]
+    for offset, end, text in sorted(spans, key=lambda span: span[0], reverse=True):
+        after = after[:offset] + text + after[end:]
     return FileChange(path, before, after, tuple(edits))
+
+
+def _parses(text: str) -> bool:
+    try:
+        ast.parse(text)
+    except SyntaxError:
+        return False
+    return True
+
+
+def _with_env_file(base: Path, changes: list[FileChange], env: str, new: str) -> list[FileChange]:
+    """Add ``ENV=new`` to ``.env.example`` in ``base``, creating it if needed."""
+    name = ".env.example"
+    for index, change in enumerate(changes):
+        if change.path == name:
+            text = env_file_text(change.after, env, new)
+            if text is not None:
+                changes[index] = FileChange(name, change.before, text, change.edits)
+            return changes
+    path = base / name
+    try:
+        before = path.read_bytes().decode("utf-8") if path.exists() else None
+    except UnicodeDecodeError:
+        return changes
+    text = env_file_text(before, env, new)
+    if text is not None:
+        changes.append(FileChange(name, before or "", text, (), created=before is None))
+    return changes
 
 
 def apply_plan(root: Path, plan: BumpPlan) -> None:
     """Write every change in ``plan``. Refuses if any file changed since the plan."""
     base = root.parent if root.is_file() else root
     for change in plan.changes:
-        if (base / change.path).read_bytes().decode("utf-8") != change.before:
+        path = base / change.path
+        if change.created:
+            if path.exists():
+                raise BumpError(f"{change.path} appeared since the bump was planned; run it again")
+        elif path.read_bytes().decode("utf-8") != change.before:
             raise BumpError(f"{change.path} changed since the bump was planned; run it again")
     for change in plan.changes:
         # Bytes keep the file's own line endings (\r\n stays \r\n).
@@ -218,7 +330,7 @@ def plan_diff(plan: BumpPlan) -> str:
             difflib.unified_diff(
                 change.before.splitlines(keepends=True),
                 change.after.splitlines(keepends=True),
-                fromfile=f"a/{change.path}",
+                fromfile="/dev/null" if change.created else f"a/{change.path}",
                 tofile=f"b/{change.path}",
             )
         )

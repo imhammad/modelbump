@@ -12,7 +12,15 @@ from typing import Annotated
 import typer
 
 from modelbump import __version__
-from modelbump.bump import BumpError, apply_plan, plan_bump, plan_diff, skipped_lines
+from modelbump.bump import (
+    BumpError,
+    BumpPlan,
+    apply_plan,
+    plan_bump,
+    plan_diff,
+    skipped_lines,
+    suggested_env_name,
+)
 from modelbump.oracles import OutputKind
 from modelbump.oracles.calibrate import DEFAULT_SEED as DEFAULT_SHEET_SEED
 from modelbump.oracles.calibrate import DEFAULT_SIZE as DEFAULT_SHEET_SIZE
@@ -259,6 +267,13 @@ def bump(
         bool,
         typer.Option(help="Also change comments, docstrings and sentences that name the model."),
     ] = False,
+    env: Annotated[
+        str | None,
+        typer.Option(
+            help="Read the model from this environment variable, e.g. OPENAI_MODEL, with the "
+            "new model as the default (Python code; also added to .env.example).",
+        ),
+    ] = None,
     exclude: Annotated[
         list[str] | None,
         typer.Option(help="Skip paths matching this pattern, e.g. 'tests'. Repeat for more."),
@@ -289,14 +304,16 @@ def bump(
     if target.severity in (Severity.RETIRING_SOON, Severity.DEPRECATED):
         typer.echo(f"Warning: {new} is deprecated too and shuts down on {target.shutdown}.")
     try:
-        plan = plan_bump(path, registry, old, new, exclude=exclude or (), include_docs=include_docs)
+        plan = plan_bump(
+            path, registry, old, new, exclude=exclude or (), include_docs=include_docs, env=env
+        )
         if write:
             apply_plan(path, plan)
     except BumpError as error:
         typer.echo(f"Error: {error}.", err=True)
         raise typer.Exit(code=2) from error
     places = len(plan.edits)
-    files = len(plan.changes)
+    files = sum(1 for change in plan.changes if change.edits)
     if places == 0:
         scanned = plan.files_scanned
         typer.echo(
@@ -309,14 +326,32 @@ def bump(
         verb = "Changed" if write else "Would change"
         typer.echo(
             f"{verb} {places} {_plural(places, 'place')} in {files} {_plural(files, 'file')}: "
-            f"{old} -> {new}."
+            f"{old} -> {new}." + (_moved_note(plan) if plan.moved else "")
         )
     if plan.skipped:
         typer.echo(f"Left alone, check by hand ({len(plan.skipped)}):")
         for line in skipped_lines(plan):
             typer.echo(line)
+    if env is None and plan.movable:
+        typer.echo(
+            f"Tip: {plan.movable} {_plural(plan.movable, 'place')} "
+            f"{'hard-codes' if plan.movable == 1 else 'hard-code'} the model. "
+            f"Add --env {suggested_env_name(old, registry)} to read it from the environment, "
+            "so the next change is one setting."
+        )
     if places and not write:
         typer.echo("Nothing was written. Run again with --write to change the files.")
+
+
+def _moved_note(plan: BumpPlan) -> str:
+    """`` 2 now read OPENAI_MODEL (added to .env.example).``"""
+    verb = "reads" if plan.moved == 1 else "read"
+    note = f" {plan.moved} now {verb} {plan.env}"
+    line = f"{plan.env}="
+    for change in plan.changes:
+        if change.path == ".env.example" and line in change.after and line not in change.before:
+            note += " (added to .env.example)"
+    return note + "."
 
 
 def _plural(count: int, word: str) -> str:

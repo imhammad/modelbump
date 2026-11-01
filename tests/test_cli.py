@@ -1541,6 +1541,8 @@ def test_bump_shows_a_diff_and_writes_nothing_by_default(tmp_path: Path) -> None
         "Left alone, check by hand (1):",
         "  app.py:2:3  claude-3-haiku-20240307  "
         "(comment, docstring or sentence; --include-docs changes these too)",
+        "Tip: 1 place hard-codes the model. Add --env ANTHROPIC_MODEL to read it from the "
+        "environment, so the next change is one setting.",
         "Nothing was written. Run again with --write to change the files.",
     ]
     assert "claude-3-haiku-20240307" in app_file.read_text().splitlines()[0]
@@ -1551,7 +1553,7 @@ def test_bump_write_changes_the_files(tmp_path: Path) -> None:
     app_file.write_text('MODEL = "gpt-4o"\n')
     result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--write"])
     assert result.exit_code == 0
-    assert result.stdout == "Changed 1 place in 1 file: gpt-4o -> gpt-6-sol.\n"
+    assert result.stdout.splitlines()[0] == "Changed 1 place in 1 file: gpt-4o -> gpt-6-sol."
     assert app_file.read_text() == 'MODEL = "gpt-6-sol"\n'
 
 
@@ -1591,3 +1593,29 @@ def test_bump_refuses_a_new_id_that_is_not_a_model_id(tmp_path: Path) -> None:
     result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", 'x"; import os'])
     assert result.exit_code == 2
     assert "does not look like a model ID" in result.stderr
+
+
+def test_bump_env_reads_the_model_from_the_environment(tmp_path: Path) -> None:
+    app_file = tmp_path / "app.py"
+    app_file.write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(
+        app,
+        ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--env", "OPENAI_MODEL", "--write"],
+    )
+    assert result.exit_code == 0
+    assert result.stdout == (
+        "Changed 1 place in 1 file: gpt-4o -> gpt-6-sol. "
+        "1 now reads OPENAI_MODEL (added to .env.example).\n"
+    )
+    assert (
+        app_file.read_text() == 'import os\nMODEL = os.environ.get("OPENAI_MODEL", "gpt-6-sol")\n'
+    )
+    assert (tmp_path / ".env.example").read_text() == "OPENAI_MODEL=gpt-6-sol\n"
+
+
+def test_bump_refuses_a_bad_env_name(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--env", "x y"]
+    )
+    assert result.exit_code == 2
+    assert "not an environment variable name" in result.stderr

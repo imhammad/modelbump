@@ -31,8 +31,29 @@ Nothing was written. Run again with --write to change the files.
 
 Why it works this way: [ADR 0068](../adr/0068-bump-rewrites-ids-the-scanner-found.md).
 
+## Moving the model to an environment variable
+
+```bash
+modelbump bump claude-3-haiku-20240307 --env ANTHROPIC_MODEL
+```
+
+```diff
++import os
+ import anthropic
+
+-MODEL = "claude-3-haiku-20240307"
++MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+```
+
+- In Python files, whole string literals that are call arguments, values given to a name, or dict values read the variable, with the new model as the default. Everything else gets the plain bump.
+- `import os` is added when missing, and `.env.example` in the root folder gets `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`.
+- Without `--env`, the bump prints a tip with the number of places it could move and a variable name for the provider.
+
+Why: [ADR 0069](../adr/0069-move-hard-coded-ids-to-an-environment-variable.md).
+
 ## Code
 
 | Module | What it does |
 |--------|--------------|
 | `modelbump.bump.rewrite` | `plan_bump` (scan, keep the old model's findings, build each file's new text), `apply_plan` (write, refusing files that changed), `plan_diff`, `skipped_lines` |
+| `modelbump.bump.config` | `movable` (can this literal read an environment variable), `import_position`, `env_file_text`, `suggested_env_name` |
