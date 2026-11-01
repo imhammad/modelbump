@@ -41,7 +41,7 @@ from modelbump.bump.config import (
 from modelbump.bump.evidence import Evidence
 from modelbump.bump.prompts import Literal, apply_repair, literals, plan_repair
 from modelbump.registry import Registry
-from modelbump.scanner import Context, Finding, iter_source_files, scan_path
+from modelbump.scanner import Context, Finding, ScanResult, iter_source_files, scan_path
 from modelbump.scanner.context import file_kind
 from modelbump.scanner.files import is_test_path
 
@@ -173,6 +173,7 @@ def plan_bump(
     include_docs: bool = False,
     env: str | None = None,
     evidence: Evidence | None = None,
+    result: ScanResult | None = None,
 ) -> BumpPlan:
     """Plan the change from ``old`` to ``new`` under ``root`` (a folder or a file).
 
@@ -183,6 +184,9 @@ def plan_bump(
     With ``evidence``, accepted repairs are written into the app's Python
     source where the place is certain, and the evidence files are added to
     ``.modelbump/`` (ADR 0070).
+
+    ``result`` is a scan of ``root`` with the same ``exclude``, already made;
+    ``bump-all`` passes it so the repository is scanned once (ADR 0073).
     """
     check_model_id(old)
     check_model_id(new)
@@ -196,7 +200,8 @@ def plan_bump(
         raise BumpError(f"{new} is the same model as {old}")
     found = registry.get(old)
     registry_id = found[1].id if found is not None else None
-    result = scan_path(root, registry, exclude)
+    if result is None:
+        result = scan_path(root, registry, exclude)
     base = root.parent if root.is_file() else root
 
     by_file: dict[str, list[Finding]] = {}

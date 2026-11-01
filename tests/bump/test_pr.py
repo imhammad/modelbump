@@ -1,6 +1,7 @@
 """Tests for the pull request description and for opening it with git and gh."""
 
 import subprocess
+from collections import Counter
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -117,6 +118,20 @@ def test_body_with_a_test_report(tmp_path: Path) -> None:
     ) in body
     # Verdicts and scores only: no prompts or answers in the description.
     assert "messages" not in body
+    assert (
+        "ModelBump found no keys, tokens or email addresses in it. Names, street addresses "
+        "and phone numbers are not looked for, so read `.modelbump/test.json` before merging."
+    ) in body
+
+
+def test_body_says_what_was_redacted(tmp_path: Path) -> None:
+    redacted = {".modelbump/test.json": Counter({"email address": 2, "OpenAI key": 1})}
+    evidence = Evidence(test_data=REPORT, redacted=redacted)
+    body = pr_body(plan_for(tmp_path), evidence, load_registry(), TODAY)
+    assert (
+        "ModelBump replaced 1 OpenAI key, 2 email addresses with `[REDACTED:...]`. "
+        "Names, street addresses"
+    ) in body
 
 
 def test_body_says_when_nothing_regressed_and_no_judge(tmp_path: Path) -> None:
@@ -140,6 +155,18 @@ def test_body_for_a_case_that_could_not_run(tmp_path: Path) -> None:
     body = pr_body(plan_for(tmp_path), Evidence(test_data=report), load_registry(), TODAY)
     assert "> 1 could not be run. Review before merging." in body
     assert "| **NOT RUN** | `bot.py:14#1` | text | 1.00 | 1.00 | timed out |" in body
+
+
+def test_a_long_error_is_one_short_cell(tmp_path: Path) -> None:
+    error = "Traceback:\n  line 1\n" + "x" * 300
+    case = {**REPORT["cases"][1], "verdict": None, "error": error}
+    body = pr_body(
+        plan_for(tmp_path), Evidence(test_data={**REPORT, "cases": [case]}), load_registry(), TODAY
+    )
+    (row,) = [line for line in body.splitlines() if "NOT RUN" in line]
+    assert "| Traceback: line 1 xxx" in row
+    assert row.endswith("... |")
+    assert len(row) < 200
 
 
 @pytest.mark.parametrize(

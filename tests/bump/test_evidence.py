@@ -161,3 +161,54 @@ def test_bad_evidence_says_what_is_wrong(
     paths = {key: tmp_path / value for key, value in kwargs.items()}
     with pytest.raises(ValueError, match=message):
         load_evidence(**paths)
+
+
+def test_secrets_and_emails_are_redacted_from_the_evidence(tmp_path: Path) -> None:
+    # A real report from the suite runner: 3 new answers per case repeat a key and an email.
+    from modelbump.suite import Suite
+    from modelbump.suite.report import render_run_json
+    from tests.bump.test_redact import GOOGLE, OPENAI
+    from tests.suite.test_run import make_case, run
+
+    def answer(model: str, prompt: str, seed: int) -> str:
+        return f"Bug. Mail jane.doe@gmail.com, key {OPENAI}" if model == "new" else "Bug."
+
+    result, _ = run(Suite((make_case("crash"), make_case("login"))), answer, runs=3)
+    data = json.loads(render_run_json(result))
+    data["cases"][1]["verdict"] = None
+    data["cases"][1]["error"] = f"400 for url https://x.googleapis.com/v1?key={GOOGLE}"
+    _, suite_file = demo(tmp_path)
+    test_file = tmp_path / "test.json"
+    test_file.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+    evidence = load_evidence(suite_file, test_file)
+    text = evidence.files()[".modelbump/test.json"]
+    assert OPENAI not in text and GOOGLE not in text and "jane.doe@gmail.com" not in text
+    assert "[REDACTED:OpenAI key]" in text and "[REDACTED:email address]" in text
+    assert evidence.redacted == {
+        ".modelbump/test.json": {"OpenAI key": 6, "email address": 6, "Google API key": 1}
+    }
+    # The pull request summary is read from the redacted report.
+    assert evidence.test_data is not None
+    assert evidence.test_data["cases"][1]["error"].endswith("?key=[REDACTED:Google API key]")
+    assert evidence.files()[".modelbump/suite.json"] == suite_file.read_text()
+
+
+def test_a_patch_with_a_secret_is_refused(tmp_path: Path) -> None:
+    from tests.bump.test_redact import GITHUB
+
+    _, suite_file = demo(tmp_path)
+    leaky = {**FIRST, "add_system": f"Use token {GITHUB} for the API."}
+    with pytest.raises(ValueError, match=r"support.py:30 contains what looks like a secret"):
+        load_evidence(
+            suite_file,
+            patch_file=write_json(tmp_path / "fix.json", {"version": 1, "patches": [leaky]}),
+        )
+
+
+def test_plan_bump_reuses_a_scan(tmp_path: Path) -> None:
+    app, _ = demo(tmp_path)
+    registry = load_registry()
+    empty = scan_path(app, registry, exclude=["*"])
+    assert plan_bump(app, registry, "gpt-4o-mini", "gpt-6-sol", result=empty).changes == ()
+    assert plan_bump(app, registry, "gpt-4o-mini", "gpt-6-sol").changes != ()

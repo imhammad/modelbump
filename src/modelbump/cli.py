@@ -1,6 +1,7 @@
 """Command-line interface for ModelBump."""
 
 import asyncio
+import difflib
 import json
 import random
 from collections import Counter
@@ -32,6 +33,7 @@ from modelbump.bump import (
     skipped_lines,
     suggested_env_name,
 )
+from modelbump.bump.redact import summary as redacted_summary
 from modelbump.oracles import OutputKind
 from modelbump.oracles.calibrate import DEFAULT_SEED as DEFAULT_SHEET_SEED
 from modelbump.oracles.calibrate import DEFAULT_SIZE as DEFAULT_SHEET_SIZE
@@ -367,7 +369,14 @@ def bump(
         found = registry.get(old)
         new = found[1].replacement if found is not None else None
         if new is None:
-            typer.echo(f"The registry suggests no replacement for {old}; pass --to.", err=True)
+            if found is None:
+                typer.echo(
+                    f"{old} is not in the registry, so there is no suggested replacement; "
+                    f"pass --to.{_did_you_mean(old, registry, path, exclude)}",
+                    err=True,
+                )
+            else:
+                typer.echo(f"The registry suggests no replacement for {old}; pass --to.", err=True)
             raise typer.Exit(code=2)
         typer.echo(f"Using the replacement the registry suggests: {new}.")
     target = assess(new, registry, day)
@@ -398,7 +407,10 @@ def bump(
     except (BumpError, ValueError) as error:
         typer.echo(f"Error: {str(error).rstrip('.')}.", err=True)
         raise typer.Exit(code=2) from error
-    _print_bump(plan, old, new, write, env, registry)
+    except OSError as error:
+        typer.echo(f"Error: cannot write {error.filename}: {error.strerror}.", err=True)
+        raise typer.Exit(code=1) from error
+    _print_bump(plan, old, new, write, env, registry, evidence.redacted_total, path, exclude)
     if pr_body_file is not None:
         pr_body_file.write_text(body, encoding="utf-8")
         typer.echo(f"Wrote the pull request description to {pr_body_file}.")
@@ -452,7 +464,8 @@ def bump_all(
     """Bump every model the code uses that is retired or shuts down soon (Dependabot-style)."""
     registry = load_registry()
     day = today.date() if today is not None else date.today()
-    due = due_models(path, registry, day, within, exclude or ())
+    result = scan_path(path, registry, exclude or ())
+    due = due_models(path, registry, day, within, exclude or (), result)
     if not due:
         typer.echo(f"No model the code uses is retired or shuts down within {within} days.")
         return
@@ -464,7 +477,9 @@ def bump_all(
             skipped += 1
             continue
         try:
-            plan = plan_bump(path, registry, model.old, model.new, exclude=exclude or ())
+            plan = plan_bump(
+                path, registry, model.old, model.new, exclude=exclude or (), result=result
+            )
             if not plan.changes:
                 typer.echo("  skipped: nothing to change automatically (see `modelbump bump`)")
                 skipped += 1
@@ -507,7 +522,15 @@ def bump_all(
 
 
 def _print_bump(
-    plan: BumpPlan, old: str, new: str, write: bool, env: str | None, registry: Registry
+    plan: BumpPlan,
+    old: str,
+    new: str,
+    write: bool,
+    env: str | None,
+    registry: Registry,
+    redacted: Counter[str] | None = None,
+    root: Path = Path("."),
+    exclude: list[str] | None = None,
 ) -> None:
     places = len(plan.edits)
     files = sum(1 for change in plan.changes if change.edits)
@@ -516,9 +539,10 @@ def _print_bump(
         typer.echo(plan_diff(plan), nl=False)
     if places == 0:
         scanned = plan.files_scanned
+        hint = _did_you_mean(old, registry, root, exclude) if not plan.skipped else ""
         typer.echo(
             f"No place that uses {old} needs a change "
-            f"(scanned {scanned} {_plural(scanned, 'file')})."
+            f"(scanned {scanned} {_plural(scanned, 'file')}).{hint}"
         )
     else:
         verb = "Changed" if write else "Would change"
@@ -546,6 +570,8 @@ def _print_bump(
         typer.echo(f"{verb} evidence{tested}:")
         for change in evidence:
             typer.echo(f"  {change.path}" + ("" if change.created else "  (updated)"))
+    if redacted:
+        typer.echo(f"Redacted from the evidence: {redacted_summary(redacted)}.")
     if plan.skipped:
         typer.echo(f"Left alone, check by hand ({len(plan.skipped)}):")
         for line in skipped_lines(plan):
@@ -570,6 +596,18 @@ def _moved_note(plan: BumpPlan) -> str:
         if change.path == ".env.example" and line in change.after and line not in change.before:
             note += " (added to .env.example)"
     return note + "."
+
+
+def _did_you_mean(model_id: str, registry: Registry, root: Path, exclude: list[str] | None) -> str:
+    """`` Did you mean gpt-4o-mini?`` for a near miss of an ID in the code or the registry."""
+    if registry.get(model_id) is not None:
+        return ""
+    in_code = {f.model_id for f in scan_path(root, registry, exclude or ()).findings}
+    if model_id in in_code:
+        return ""
+    known = sorted(in_code | {i for _, model in registry for i in model.all_ids()})
+    close = difflib.get_close_matches(model_id, known, n=1, cutoff=0.85)
+    return f" Did you mean {close[0]}?" if close else ""
 
 
 def _plural(count: int, word: str) -> str:

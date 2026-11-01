@@ -29,6 +29,10 @@ _SHAPE = re.compile(
     r"(?:gpt|chatgpt|claude|gemini|text-embedding)-[a-z0-9.-]*[0-9][a-z0-9.-]*(?:@[0-9]{8})?"
     r"|o[1-9](?:-[a-z0-9.-]+)?"
 )
+# Every accepted ID either is a registry ID or starts with one of these, so a
+# line holding none of them cannot hold an ID and is skipped (ADR 0073).
+_SHAPE_HINTS = ("gpt-", "claude-", "gemini-", "text-embedding-")
+_O_HINT = r"o[1-9]"
 _QUOTES = "\"'`"
 _TRAILING = "._-"
 
@@ -50,10 +54,16 @@ class ModelIdFinder:
 
     def __init__(self, registry_ids: Iterable[str]) -> None:
         self._known = frozenset(registry_ids)
+        literals = sorted({*self._known, *_SHAPE_HINTS}, key=len, reverse=True)
+        self._hint = re.compile("|".join([*map(re.escape, literals), _O_HINT]))
 
     def find(self, text: str) -> Iterator[IdMatch]:
         """Yield every model ID in ``text``, in reading order."""
+        if self._hint.search(text) is None:
+            return
         for line_no, line in enumerate(text.splitlines(), start=1):
+            if self._hint.search(line) is None:
+                continue
             for run in _RUN.finditer(line):
                 hit = self._match_run(line, run.start(), run.group())
                 if hit is not None:

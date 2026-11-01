@@ -134,14 +134,15 @@ def iter_source_files(root: Path, exclude: Sequence[str] = ()) -> Iterator[Path]
         dirnames[:] = sorted(
             d
             for d in dirnames
-            if d not in SKIP_DIRS and not is_excluded(_relative(base / d, root), exclude)
+            if d not in SKIP_DIRS
+            and not (exclude and is_excluded(_relative(base / d, root), exclude))
         )
         for name in sorted(filenames):
             path = base / name
             if (
                 not path.is_symlink()
                 and is_scannable(path)
-                and not is_excluded(_relative(path, root), exclude)
+                and not (exclude and is_excluded(_relative(path, root), exclude))
             ):
                 yield path
 

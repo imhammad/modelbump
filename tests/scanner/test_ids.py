@@ -1,5 +1,7 @@
 """Tests for finding model IDs in text."""
 
+import re
+
 import pytest
 
 from modelbump.registry import load_registry
@@ -95,3 +97,31 @@ def test_every_shipped_registry_id_is_found_when_quoted() -> None:
     finder = ModelIdFinder(registry_ids)
     for model_id in registry_ids:
         assert ids(finder, f'model="{model_id}"') == [model_id], model_id
+
+
+def test_quick_line_check_finds_the_same_ids() -> None:
+    # The finder skips lines that hold no registry ID and no provider prefix
+    # (ADR 0073). With the check turned off it must find exactly the same.
+    known = [model_id for _, model in load_registry() for model_id in model.all_ids()]
+    fast = ModelIdFinder(known)
+    slow = ModelIdFinder(known)
+    slow._hint = re.compile("")  # matches every line
+    text = "\n".join(
+        [
+            "x = 1  # nothing here",
+            'model = "anthropic.claude-3-haiku-20240307-v1:0"',
+            "metadata = {'ada': 'davinci', 'k': \"ada\"}",
+            "openai/gpt-4o and o3-mini, foo1 bar.o1-preview",
+            "",
+            *[f'M{n} = "{model_id}"' for n, model_id in enumerate(known)],
+            "gemini-2.5-flash@20250101 text-embedding-3-small chatgpt-4o-latest",
+        ]
+    )
+    assert list(fast.find(text)) == list(slow.find(text))
+    assert len(list(fast.find(text))) > len(known)
+
+
+def test_text_without_any_hint_is_skipped_whole(finder: ModelIdFinder) -> None:
+    assert ids(finder, "def f(x):\n    return x + 1\n" * 100) == []
+    assert ids(finder, "\n" * 50 + 'M = "claude-3-haiku-20240307"') == ["claude-3-haiku-20240307"]
+    assert next(finder.find("\n" * 50 + 'M = "o1"')).line == 51

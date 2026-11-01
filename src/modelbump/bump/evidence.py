@@ -11,14 +11,19 @@ run``), and the bump takes their files:
   ``modelbump test .modelbump/suite.json --patch .modelbump/repairs.json``
   reproduces the repaired run.
 
-The files are copied as they are, so the evidence is exactly what was run.
+The files are copied as they are, so the evidence is exactly what was run,
+except that secrets and email addresses are replaced with ``[REDACTED:kind]``
+first (ADR 0073, :mod:`modelbump.bump.redact`). The pull request summary is
+read from the redacted report too, so an error message cannot leak a key.
 """
 
 import json
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from modelbump.bump.redact import redact_json, secrets_in, total
 from modelbump.repair import PromptPatch, apply_patches, patches_to_json, read_patches
 from modelbump.repair.patch import PatchError
 from modelbump.suite import Suite, read_suite
@@ -38,7 +43,14 @@ class Evidence:
     repair_text: str | None = None
     accepted: tuple[PromptPatch, ...] = ()
     test_data: dict[str, Any] | None = None
-    """The test report, parsed, for the pull request's summary."""
+    """The test report, redacted and parsed, for the pull request's summary."""
+    redacted: dict[str, Counter[str]] = field(default_factory=dict)
+    """Evidence file -> how many of each kind of secret was replaced in it."""
+
+    @property
+    def redacted_total(self) -> Counter[str]:
+        """Everything replaced, over all the evidence files."""
+        return total(self.redacted.values())
 
     def files(self) -> dict[str, str]:
         """Path in the repository -> text, for every evidence file."""
@@ -75,8 +87,9 @@ def load_evidence(
     if repair_file is not None and proposals is None:
         raise ValueError("--repairs needs --proposals, the folder from `modelbump repair propose`")
     suite = read_suite(suite_file) if suite_file is not None else None
-    suite_text = _text(suite_file)
-    test_text = _text(test_file)
+    redacted: dict[str, Counter[str]] = {}
+    suite_text = _redacted(suite_file, "suite.json", redacted)
+    test_text = _redacted(test_file, "test.json", redacted)
     tested = None
     data: dict[str, Any] | None = None
     if test_file is not None and test_text is not None:
@@ -86,7 +99,7 @@ def load_evidence(
                 f"{test_file} is not a JSON report from `modelbump test --format json`"
             )
         tested = (str(data.get("old")), str(data.get("new")))
-    repair_text = _text(repair_file)
+    repair_text = _redacted(repair_file, "repair.json", redacted)
     accepted: tuple[PromptPatch, ...] = ()
     if repair_file is not None and repair_text is not None and proposals and suite is not None:
         accepted = _accepted(repair_file, repair_text, proposals, suite)
@@ -96,7 +109,29 @@ def load_evidence(
             apply_patches(suite, accepted)
         except PatchError as error:
             raise ValueError(f"{patch_file} does not fit the suite: {error}") from error
-    return Evidence(suite, suite_text, test_text, tested, repair_text, accepted, data)
+    _check_patches(accepted)
+    return Evidence(suite, suite_text, test_text, tested, repair_text, accepted, data, redacted)
+
+
+def _check_patches(patches: tuple[PromptPatch, ...]) -> None:
+    """Refuse a patch that would write a secret into the code (ADR 0073)."""
+    for patch in patches:
+        kinds = secrets_in(patches_to_json((patch,)))
+        if kinds:
+            raise ValueError(
+                f"the patch for {patch.call} contains what looks like a secret "
+                f"({', '.join(kinds)}); remove it from the patch and test again"
+            )
+
+
+def _redacted(path: Path | None, name: str, redacted: dict[str, Counter[str]]) -> str | None:
+    text = _text(path)
+    if text is None:
+        return None
+    result = redact_json(text, name)
+    if result.found:
+        redacted[f"{EVIDENCE_DIR}/{name}"] = result.found
+    return result.text
 
 
 def _accepted(path: Path, text: str, proposals: Path, suite: Suite) -> tuple[PromptPatch, ...]:

@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 
 from modelbump.registry import Registry
-from modelbump.scanner import Severity, assess, scan_path
+from modelbump.scanner import ScanResult, Severity, assess, scan_path
 from modelbump.scanner.context import DOCUMENTATION
 
 DEFAULT_WITHIN = 90
@@ -43,10 +43,17 @@ def due_models(
     today: date,
     within: int = DEFAULT_WITHIN,
     exclude: Sequence[str] = (),
+    result: ScanResult | None = None,
 ) -> list[DueModel]:
-    """Every model under ``root`` that is due, soonest shutdown first."""
+    """Every model under ``root`` that is due, soonest shutdown first.
+
+    ``result`` is a scan of ``root`` already made, so a caller that plans the
+    bumps too scans the repository once (ADR 0073).
+    """
+    if result is None:
+        result = scan_path(root, registry, exclude)
     counts: dict[str, int] = {}
-    for finding in scan_path(root, registry, exclude).findings:
+    for finding in result.findings:
         if finding.registry_id is None or finding.context in DOCUMENTATION:
             continue
         counts[finding.registry_id] = counts.get(finding.registry_id, 0) + 1

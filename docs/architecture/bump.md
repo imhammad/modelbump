@@ -126,6 +126,29 @@ The repository must allow GitHub Actions to create pull requests (Settings → A
 
 Why: [ADR 0072](../adr/0072-scheduled-bump-pull-requests.md).
 
+## What the evidence may hold
+
+`.modelbump/test.json` holds every prompt, answer and error message of the test. Before the bump writes it, it replaces these with `[REDACTED:kind]`:
+
+- API keys and tokens in the published formats of OpenAI, Anthropic, Google, GitHub, AWS, Groq, Hugging Face and Slack;
+- private key blocks, bearer tokens and JSON web tokens;
+- email addresses (not `example.com`, `example.org` or `example.net`).
+
+```text
+Added evidence, tested ollama/qwen2.5:7b -> ollama/qwen3:4b-instruct:
+  .modelbump/suite.json
+  .modelbump/test.json
+Redacted from the evidence: 1 Google API key, 2 email addresses.
+```
+
+The pull request description says the same. Names, street addresses and phone numbers are not looked for, so read `test.json` before merging. A patch that holds a key is refused, because it would go into the source code.
+
+## Large repositories
+
+On a 24,000-file repository, `modelbump scan` and `bump-all` each take about 3 seconds (19 and 34 before). A line with no registry ID and no provider prefix is skipped, a file with no ID is not parsed, and `bump-all` scans once for all its models.
+
+Why: [ADR 0073](../adr/0073-redact-evidence-and-scan-large-repositories-fast.md).
+
 ## Code
 
 | Module | What it does |
@@ -136,3 +159,4 @@ Why: [ADR 0072](../adr/0072-scheduled-bump-pull-requests.md).
 | `modelbump.bump.prompts` | `literals` (plain string literals of a Python file), `plan_repair` (where each part of a patch goes, or why not), `apply_repair`, `render` |
 | `modelbump.bump.pr` | `pr_body`, `pr_title`, `branch_name`, `check_repo` (gh, clean tree, new branch), `open_pr` (commit, push, `gh pr create`, switch back) |
 | `modelbump.bump.due` | `due_models` (models the code uses that are retired or shut down soon, with their replacement or the reason there is none), `due_line` |
+| `modelbump.bump.redact` | `redact`, `redact_json` (replace secrets and email addresses with `[REDACTED:kind]`, keeping the JSON valid), `secrets_in` (for patch checks), `summary` |

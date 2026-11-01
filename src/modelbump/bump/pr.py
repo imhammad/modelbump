@@ -24,6 +24,7 @@ from typing import Any
 
 from modelbump import __version__
 from modelbump.bump.evidence import EVIDENCE_DIR, Evidence
+from modelbump.bump.redact import summary as redacted_summary
 from modelbump.bump.rewrite import SKIP_HINTS, BumpError, BumpPlan
 from modelbump.registry import Registry
 from modelbump.scanner import Severity, assess
@@ -31,6 +32,7 @@ from modelbump.scanner import Severity, assess
 HOMEPAGE = "https://github.com/imhammad/modelbump"
 _ORDER = ("regressed", "inconclusive", "equivalent", "improved")
 _BRANCH_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+_CELL_MAX = 120
 
 Run = Callable[[Sequence[str], Path], "subprocess.CompletedProcess[str]"]
 
@@ -171,6 +173,8 @@ def _test(plan: BumpPlan, evidence: Evidence | None) -> list[str]:
         f"Result: {summary}. Scores are the share of answers that passed (0 to 1). "
         f"Every prompt, answer and score is in `{EVIDENCE_DIR}/test.json`.",
         "",
+        _privacy(evidence),
+        "",
         "Run it again:",
         "",
         "```bash",
@@ -179,6 +183,19 @@ def _test(plan: BumpPlan, evidence: Evidence | None) -> list[str]:
         "",
     ]
     return lines
+
+
+def _privacy(evidence: Evidence | None) -> str:
+    found = evidence.redacted_total if evidence is not None else None
+    done = (
+        f"ModelBump replaced {redacted_summary(found)} with `[REDACTED:...]`"
+        if found
+        else "ModelBump found no keys, tokens or email addresses in it"
+    )
+    return (
+        f"{done}. Names, street addresses and phone numbers are not looked for, "
+        f"so read `{EVIDENCE_DIR}/test.json` before merging."
+    )
 
 
 def _method(data: dict[str, Any]) -> str:
@@ -199,7 +216,7 @@ def _row(case: dict[str, Any]) -> str:
     failures = case.get("new_failures") or {}
     top = ", ".join(f"{name} ({times})" for name, times in list(failures.items())[:2])
     if case.get("error"):
-        top = str(case["error"])
+        top = _cell(str(case["error"]))
     cells = [
         f"**{verdict}**" if verdict in ("REGRESSED", "NOT RUN") else verdict,
         f"`{case.get('id')}`",
@@ -209,6 +226,12 @@ def _row(case: dict[str, Any]) -> str:
         top.replace("|", "\\|") if verdict != "EQUIVALENT" else "",
     ]
     return "| " + " | ".join(cells) + " |"
+
+
+def _cell(text: str) -> str:
+    """One line, short enough for a table cell (an error message can be long)."""
+    text = " ".join(text.split())
+    return text if len(text) <= _CELL_MAX else text[: _CELL_MAX - 3].rstrip() + "..."
 
 
 def _reproduce(data: dict[str, Any], evidence: Evidence | None) -> str:

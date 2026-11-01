@@ -71,8 +71,10 @@ def scan_path(
             skipped += 1
             continue
         scanned += 1
-        rel = path.relative_to(base).as_posix()
         matches = list(finder.find(text))
+        if not matches:
+            continue
+        rel = path.relative_to(base).as_posix()
         spots = [(m.line, m.column, len(m.model_id)) for m in matches]
         for match, place in zip(matches, places(rel, text, spots), strict=True):
             if skip_comments and place.context in DOCUMENTATION:

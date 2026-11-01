@@ -1565,9 +1565,12 @@ def test_bump_with_nothing_to_change(tmp_path: Path) -> None:
 
 
 def test_bump_needs_to_when_the_registry_has_no_replacement(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["bump", "gpt-5.4-cyber", str(tmp_path)])
+    assert result.exit_code == 2
+    assert "suggests no replacement for gpt-5.4-cyber; pass --to" in result.stderr
     result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path)])
     assert result.exit_code == 2
-    assert "suggests no replacement for gpt-4o; pass --to" in result.stderr
+    assert "gpt-4o is not in the registry, so there is no suggested replacement" in result.stderr
 
 
 def test_bump_refuses_a_retired_target(tmp_path: Path) -> None:
@@ -1659,6 +1662,56 @@ def test_bump_adds_evidence_and_writes_repairs(tmp_path: Path) -> None:
         "environment, so the next change is one setting.",
     ]
     assert "No numbered lists." in (app_dir / "support.py").read_text()
+
+
+def test_bump_says_what_it_redacted_from_the_evidence(tmp_path: Path) -> None:
+    import shutil
+
+    app_dir = tmp_path / "app"
+    shutil.copytree(DEMO, app_dir)
+    suite_file = tmp_path / "suite.json"
+    assert runner.invoke(app, ["suite", str(app_dir), "--output", str(suite_file)]).exit_code == 0
+    report = tmp_path / "test.json"
+    case = {"id": "a.py:1#1", "verdict": None, "error": "denied for jane@corp.io"}
+    report.write_text(
+        json.dumps({"version": 1, "old": "ollama/a", "new": "ollama/b", "cases": [case]})
+    )
+    args = ["bump", "gpt-4o-mini", str(app_dir), "--to", "gpt-6-sol", "--suite", str(suite_file)]
+    result = runner.invoke(app, [*args, "--report", str(report), "--write"])
+    assert result.exit_code == 0, result.output
+    assert "Redacted from the evidence: 1 email address." in result.stdout
+    assert "jane@corp.io" not in (app_dir / ".modelbump" / "test.json").read_text()
+
+
+def test_bump_suggests_the_id_that_was_meant(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o-mini"\n')
+    result = runner.invoke(app, ["bump", "gpt-4o-minii", str(tmp_path)])
+    assert result.exit_code == 2
+    assert result.stderr == (
+        "gpt-4o-minii is not in the registry, so there is no suggested replacement; "
+        "pass --to. Did you mean gpt-4o-mini?\n"
+    )
+    result = runner.invoke(app, ["bump", "claude-3-haiku-2024037", str(tmp_path), "--to", "x-1"])
+    assert result.exit_code == 0
+    assert result.stdout == (
+        "No place that uses claude-3-haiku-2024037 needs a change (scanned 1 file). "
+        "Did you mean claude-3-haiku-20240307?\n"
+    )
+
+
+def test_bump_says_when_a_file_cannot_be_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import modelbump.cli
+
+    def refuse(root: Path, plan: object) -> None:
+        raise PermissionError(13, "Permission denied", str(tmp_path / "app.py"))
+
+    monkeypatch.setattr(modelbump.cli, "apply_plan", refuse)
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--write"])
+    assert result.exit_code == 1
+    assert result.stderr == f"Error: cannot write {tmp_path / 'app.py'}: Permission denied.\n"
 
 
 def test_bump_report_needs_a_suite(tmp_path: Path) -> None:

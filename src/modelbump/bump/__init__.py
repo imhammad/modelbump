@@ -12,6 +12,7 @@ from modelbump.bump.pr import (
     pr_body,
     pr_title,
 )
+from modelbump.bump.redact import Redacted, redact, redact_json
 from modelbump.bump.rewrite import (
     SKIP_HINTS,
     BumpError,
@@ -39,6 +40,7 @@ __all__ = [
     "Edit",
     "Evidence",
     "FileChange",
+    "Redacted",
     "Repo",
     "SkipReason",
     "Skipped",
@@ -56,6 +58,8 @@ __all__ = [
     "plan_diff",
     "pr_body",
     "pr_title",
+    "redact",
+    "redact_json",
     "skipped_lines",
     "suggested_env_name",
 ]

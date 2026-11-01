@@ -78,3 +78,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0070](0070-bump-adds-evidence-and-writes-repairs-into-the-code.md) | The bump takes the test and repair results as files, adds them to `.modelbump/`, and writes a repair into the code only where its place is certain | Accepted |
 | [0071](0071-pull-request-with-the-evidence-report.md) | `bump --open-pr` opens the pull request with plain git and gh, and its description is the evidence report, with verdicts but no answers | Accepted |
 | [0072](0072-scheduled-bump-pull-requests.md) | `bump-all` and the Action's `open-prs` input open one pull request per due model on a schedule, with least privilege and no duplicates | Accepted |
+| [0073](0073-redact-evidence-and-scan-large-repositories-fast.md) | Redact secrets and email addresses from the evidence, and scan large repositories fast | Accepted |

@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from modelbump.bump import DueModel, due_line, due_models
 from modelbump.cli import app
 from modelbump.registry import load_registry
+from modelbump.scanner import scan_path
 from tests.bump.conftest import FakeGh, git
 
 runner = CliRunner()
@@ -32,6 +33,13 @@ def test_due_models_uses_code_not_comments(tmp_path: Path) -> None:
         ),
         ("claude-3-haiku-20240307", "claude-haiku-4-5-20251001", None),
     ]
+
+
+def test_due_models_reuses_a_scan(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(APP)
+    registry = load_registry()
+    empty = scan_path(tmp_path, registry, exclude=["*"])
+    assert due_models(tmp_path, registry, date(2026, 11, 1), result=empty) == []
 
 
 def test_within_sets_the_window(tmp_path: Path) -> None:
