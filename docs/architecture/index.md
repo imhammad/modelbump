@@ -26,6 +26,6 @@ flowchart LR
 | [Runner](runner.md) | Call models with caching, retries and a cost budget | Done (Phase 3) |
 | [Stats engine](stats.md) | Decide REGRESSED / IMPROVED / EQUIVALENT / INCONCLUSIVE per test case | v0.3.0 (Phase 4) |
 | [Prompt repair](repair.md) | Find prompt edits that fix regressions safely | v0.5.0 (Phase 6) |
-| Reporter / GitHub | Produce reports and open the upgrade PR | Planned (Phase 7) |
+| [Bump](bump.md) | Change the model ID in the code; later the suite, repairs and the upgrade PR | In progress (Phase 7) |
 
 Each stage gets its own page here when it is built.

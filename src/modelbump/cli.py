@@ -12,6 +12,7 @@ from typing import Annotated
 import typer
 
 from modelbump import __version__
+from modelbump.bump import BumpError, apply_plan, plan_bump, plan_diff, skipped_lines
 from modelbump.oracles import OutputKind
 from modelbump.oracles.calibrate import DEFAULT_SEED as DEFAULT_SHEET_SEED
 from modelbump.oracles.calibrate import DEFAULT_SIZE as DEFAULT_SHEET_SIZE
@@ -63,7 +64,7 @@ from modelbump.runner import (
     pin_versions,
     resolve_model,
 )
-from modelbump.scanner import DEFAULT_SOON_DAYS, scan_path
+from modelbump.scanner import DEFAULT_SOON_DAYS, Severity, assess, scan_path
 from modelbump.scanner.report import (
     RENDERERS,
     OutputFormat,
@@ -234,6 +235,92 @@ def check(
         typer.echo(f"Rescheduled: {len(model.superseded)} earlier plan(s) were replaced.")
     if model.replacement:
         typer.echo(f"Suggested replacement: {model.replacement}")
+
+
+@app.command()
+def bump(
+    old: Annotated[str, typer.Argument(help="Model ID to move away from, e.g. gpt-4o-mini.")],
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder or file to change.", exists=True, resolve_path=True),
+    ] = Path("."),
+    to: Annotated[
+        str | None,
+        typer.Option(
+            "--to",
+            help="Model ID to move to. Default: the replacement the registry suggests.",
+        ),
+    ] = None,
+    write: Annotated[
+        bool,
+        typer.Option(help="Change the files. Without it, only show what would change."),
+    ] = False,
+    include_docs: Annotated[
+        bool,
+        typer.Option(help="Also change comments, docstrings and sentences that name the model."),
+    ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Skip paths matching this pattern, e.g. 'tests'. Repeat for more."),
+    ] = None,
+    today: Annotated[
+        datetime | None,
+        typer.Option(
+            formats=["%Y-%m-%d"],
+            help="Check the new model's retirement as if today were this day (YYYY-MM-DD).",
+        ),
+    ] = None,
+) -> None:
+    """Change a model ID to a new one wherever the code uses it (a dry run by default)."""
+    registry = load_registry()
+    day = today.date() if today is not None else date.today()
+    new = to
+    if new is None:
+        found = registry.get(old)
+        new = found[1].replacement if found is not None else None
+        if new is None:
+            typer.echo(f"The registry suggests no replacement for {old}; pass --to.", err=True)
+            raise typer.Exit(code=2)
+        typer.echo(f"Using the replacement the registry suggests: {new}.")
+    target = assess(new, registry, day)
+    if target.severity is Severity.RETIRED:
+        typer.echo(f"{new} shut down on {target.shutdown}; pick another model.", err=True)
+        raise typer.Exit(code=2)
+    if target.severity in (Severity.RETIRING_SOON, Severity.DEPRECATED):
+        typer.echo(f"Warning: {new} is deprecated too and shuts down on {target.shutdown}.")
+    try:
+        plan = plan_bump(path, registry, old, new, exclude=exclude or (), include_docs=include_docs)
+        if write:
+            apply_plan(path, plan)
+    except BumpError as error:
+        typer.echo(f"Error: {error}.", err=True)
+        raise typer.Exit(code=2) from error
+    places = len(plan.edits)
+    files = len(plan.changes)
+    if places == 0:
+        scanned = plan.files_scanned
+        typer.echo(
+            f"No place that uses {old} needs a change "
+            f"(scanned {scanned} {_plural(scanned, 'file')})."
+        )
+    else:
+        if not write:
+            typer.echo(plan_diff(plan), nl=False)
+        verb = "Changed" if write else "Would change"
+        typer.echo(
+            f"{verb} {places} {_plural(places, 'place')} in {files} {_plural(files, 'file')}: "
+            f"{old} -> {new}."
+        )
+    if plan.skipped:
+        typer.echo(f"Left alone, check by hand ({len(plan.skipped)}):")
+        for line in skipped_lines(plan):
+            typer.echo(line)
+    if places and not write:
+        typer.echo("Nothing was written. Run again with --write to change the files.")
+
+
+def _plural(count: int, word: str) -> str:
+    return word if count == 1 else word + "s"
 
 
 @app.command()

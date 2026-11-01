@@ -73,3 +73,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0065](0065-repair-baselines.md) | Compare the repair with two baselines, a naive rewrite and a score-guided optimiser, built in-house | Accepted |
 | [0066](0066-rq3-repair-experiment.md) | Measure the repair on two migrations, with each regressed call widened to three cases, and count every request | Accepted |
 | [0067](0067-instruct-model-and-salvaged-proposals.md) | Use Qwen 3 4B Instruct for the second migration, and keep a proposal's added instruction when its edits do not fit | Accepted |
+| [0068](0068-bump-rewrites-ids-the-scanner-found.md) | `modelbump bump` changes the model ID only where the scanner found it used, and shows a diff first | Accepted |

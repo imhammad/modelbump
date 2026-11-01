@@ -1522,3 +1522,72 @@ def test_judge_probes_and_probe_check_end_to_end(
     again = runner.invoke(app, ["judge", "probes", str(tmp_path / "suite.json")])
     assert again.exit_code == 2
     assert "is from an older ModelBump" in again.output or "not a" in again.output
+
+
+def test_bump_shows_a_diff_and_writes_nothing_by_default(tmp_path: Path) -> None:
+    app_file = tmp_path / "app.py"
+    app_file.write_text('MODEL = "claude-3-haiku-20240307"\n# claude-3-haiku-20240307\n')
+    result = runner.invoke(app, ["bump", "claude-3-haiku-20240307", str(tmp_path)])
+    assert result.exit_code == 0
+    assert result.stdout.splitlines() == [
+        "Using the replacement the registry suggests: claude-haiku-4-5-20251001.",
+        "--- a/app.py",
+        "+++ b/app.py",
+        "@@ -1,2 +1,2 @@",
+        '-MODEL = "claude-3-haiku-20240307"',
+        '+MODEL = "claude-haiku-4-5-20251001"',
+        " # claude-3-haiku-20240307",
+        "Would change 1 place in 1 file: claude-3-haiku-20240307 -> claude-haiku-4-5-20251001.",
+        "Left alone, check by hand (1):",
+        "  app.py:2:3  claude-3-haiku-20240307  "
+        "(comment, docstring or sentence; --include-docs changes these too)",
+        "Nothing was written. Run again with --write to change the files.",
+    ]
+    assert "claude-3-haiku-20240307" in app_file.read_text().splitlines()[0]
+
+
+def test_bump_write_changes_the_files(tmp_path: Path) -> None:
+    app_file = tmp_path / "app.py"
+    app_file.write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--write"])
+    assert result.exit_code == 0
+    assert result.stdout == "Changed 1 place in 1 file: gpt-4o -> gpt-6-sol.\n"
+    assert app_file.read_text() == 'MODEL = "gpt-6-sol"\n'
+
+
+def test_bump_with_nothing_to_change(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(app, ["bump", "gpt-4o-mini", str(tmp_path), "--to", "gpt-6-sol"])
+    assert result.exit_code == 0
+    assert result.stdout == ("No place that uses gpt-4o-mini needs a change (scanned 1 file).\n")
+
+
+def test_bump_needs_to_when_the_registry_has_no_replacement(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path)])
+    assert result.exit_code == 2
+    assert "suggests no replacement for gpt-4o; pass --to" in result.stderr
+
+
+def test_bump_refuses_a_retired_target(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app, ["bump", "gpt-4o", str(tmp_path), "--to", "claude-3-haiku-20240307"]
+    )
+    assert result.exit_code == 2
+    assert "claude-3-haiku-20240307 shut down on 2026-04-20; pick another model." in result.stderr
+
+
+def test_bump_warns_about_a_deprecated_target(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(
+        app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-5.1", "--today", "2026-10-22"]
+    )
+    assert result.exit_code == 0
+    assert result.stdout.startswith(
+        "Warning: gpt-5.1 is deprecated too and shuts down on 2027-04-01.\n"
+    )
+
+
+def test_bump_refuses_a_new_id_that_is_not_a_model_id(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", 'x"; import os'])
+    assert result.exit_code == 2
+    assert "does not look like a model ID" in result.stderr
