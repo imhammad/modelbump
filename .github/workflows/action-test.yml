@@ -62,3 +62,24 @@ jobs:
         env:
           OUTCOME: ${{ steps.scan.outcome }}
         run: test "$OUTCOME" = "failure"
+
+  bump:
+    name: Action lists the bumps it would open
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the action in dry-run mode
+        id: bump
+        uses: ./
+        with:
+          path: tests/fixtures/action-demo
+          exclude: |
+            skipped
+          upload-sarif: "false"
+          open-prs: "dry-run"
+      - name: Check the report
+        env:
+          REPORT: ${{ steps.bump.outputs.bump-report }}
+        run: |
+          grep -F "claude-3-haiku-20240307 -> claude-haiku-4-5-20251001" "$REPORT"
+          grep -F "would change 1 place in 1 file" "$REPORT"

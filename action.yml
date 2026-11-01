@@ -4,6 +4,10 @@
 #     with:
 #       fail-within: "30"
 #
+# With `open-prs: "true"` it also opens one "Bump LLM model" pull request per
+# retired or retiring model, like Dependabot (ADR 0072). That needs
+# `permissions: contents: write, pull-requests: write`.
+#
 # It installs ModelBump from this repository at the same version, so the
 # action and the scanner can never drift apart.
 name: ModelBump scan
@@ -42,10 +46,30 @@ inputs:
       Needs `permissions: security-events: write`.
     default: "true"
 
+  open-prs:
+    description: >-
+      "true" opens one pull request per model that is retired or shuts down within
+      `within` days, to the registry's suggested replacement; a model whose branch is
+      already there is skipped. "dry-run" only lists them. "false" does neither.
+      Needs `permissions: contents: write, pull-requests: write`, and the repository
+      setting that lets GitHub Actions create pull requests.
+    default: "false"
+  within:
+    description: With open-prs, bump models that shut down within this many days.
+    default: "90"
+  github-token:
+    description: >-
+      Token for opening pull requests. The default GITHUB_TOKEN works, but pull requests
+      it opens do not start other workflows; pass a fine-grained token to run CI on them.
+    default: ${{ github.token }}
+
 outputs:
   sarif-file:
     description: Path of the SARIF report the action wrote.
     value: ${{ steps.sarif.outputs.file }}
+  bump-report:
+    description: With open-prs, path of the text report of the bumps (also in the job summary).
+    value: ${{ steps.bump.outputs.report }}
 
 runs:
   using: composite
@@ -85,3 +109,15 @@ runs:
         MB_SKIP_TESTS: ${{ inputs.skip-tests }}
         MB_FAIL_WITHIN: ${{ inputs.fail-within }}
       run: bash "$GITHUB_ACTION_PATH/action/scan.sh" check
+
+    - name: Open bump pull requests
+      id: bump
+      if: ${{ inputs.open-prs == 'true' || inputs.open-prs == 'dry-run' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        MB_PATH: ${{ inputs.path }}
+        MB_EXCLUDE: ${{ inputs.exclude }}
+        MB_WITHIN: ${{ inputs.within }}
+        MB_OPEN_PRS: ${{ inputs.open-prs }}
+      run: bash "$GITHUB_ACTION_PATH/action/scan.sh" bump

@@ -13,12 +13,16 @@ import typer
 
 from modelbump import __version__
 from modelbump.bump import (
+    DEFAULT_WITHIN,
     EVIDENCE_DIR,
+    BranchExists,
     BumpError,
     BumpPlan,
     apply_plan,
     branch_name,
     check_repo,
+    due_line,
+    due_models,
     load_evidence,
     open_pr,
     plan_bump,
@@ -414,6 +418,92 @@ def bump(
             )
             raise typer.Exit(code=1) from error
         typer.echo(f"Opened pull request {url} from branch {branch_name(old, new)}.")
+
+
+@app.command("bump-all")
+def bump_all(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Folder to check and change.", exists=True, resolve_path=True),
+    ] = Path("."),
+    within: Annotated[
+        int,
+        typer.Option(
+            min=0, help="Bump models that are retired or shut down within this many days."
+        ),
+    ] = DEFAULT_WITHIN,
+    open_pull_requests: Annotated[
+        bool,
+        typer.Option(
+            "--open-pr",
+            help="Open one pull request per model with gh. A model whose branch is already "
+            "there is skipped, so running this on a schedule never opens duplicates.",
+        ),
+    ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(help="Skip paths matching this pattern, e.g. 'tests'. Repeat for more."),
+    ] = None,
+    today: Annotated[
+        datetime | None,
+        typer.Option(formats=["%Y-%m-%d"], help="Check as if today were this day (YYYY-MM-DD)."),
+    ] = None,
+) -> None:
+    """Bump every model the code uses that is retired or shuts down soon (Dependabot-style)."""
+    registry = load_registry()
+    day = today.date() if today is not None else date.today()
+    due = due_models(path, registry, day, within, exclude or ())
+    if not due:
+        typer.echo(f"No model the code uses is retired or shuts down within {within} days.")
+        return
+    opened = skipped = 0
+    for model in due:
+        typer.echo(due_line(model))
+        if model.new is None:
+            typer.echo(f"  skipped: {model.reason}")
+            skipped += 1
+            continue
+        try:
+            plan = plan_bump(path, registry, model.old, model.new, exclude=exclude or ())
+            if not plan.changes:
+                typer.echo("  skipped: nothing to change automatically (see `modelbump bump`)")
+                skipped += 1
+                continue
+            if not open_pull_requests:
+                places, files = len(plan.edits), len(plan.changes)
+                typer.echo(
+                    f"  would change {places} {_plural(places, 'place')} in "
+                    f"{files} {_plural(files, 'file')}"
+                )
+                continue
+            branch = branch_name(model.old, model.new)
+            try:
+                repo = check_repo(path, branch)
+            except BranchExists as error:
+                typer.echo(f"  skipped: {error}")
+                skipped += 1
+                continue
+            apply_plan(path, plan)
+            base = path.parent if path.is_file() else path
+            url = open_pr(
+                repo,
+                [base / change.path for change in plan.changes],
+                branch,
+                pr_title(plan),
+                pr_body(plan, None, registry, day),
+            )
+        except BumpError as error:
+            typer.echo(f"Error: {str(error).rstrip('.')}.", err=True)
+            raise typer.Exit(code=1) from error
+        typer.echo(f"  opened {url}")
+        opened += 1
+    if open_pull_requests:
+        typer.echo(
+            f"Due: {len(due)} {_plural(len(due), 'model')}; opened {opened} "
+            f"{_plural(opened, 'pull request')}, skipped {skipped}."
+        )
+    else:
+        typer.echo("Nothing was changed. Add --open-pr to open one pull request per model.")
 
 
 def _print_bump(

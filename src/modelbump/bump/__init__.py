@@ -1,8 +1,17 @@
 """Bump: move a repository from one model to another (Phase 7)."""
 
 from modelbump.bump.config import check_env_name, suggested_env_name
+from modelbump.bump.due import DEFAULT_WITHIN, DueModel, due_line, due_models
 from modelbump.bump.evidence import EVIDENCE_DIR, Evidence, load_evidence
-from modelbump.bump.pr import Repo, branch_name, check_repo, open_pr, pr_body, pr_title
+from modelbump.bump.pr import (
+    BranchExists,
+    Repo,
+    branch_name,
+    check_repo,
+    open_pr,
+    pr_body,
+    pr_title,
+)
 from modelbump.bump.rewrite import (
     SKIP_HINTS,
     BumpError,
@@ -20,10 +29,13 @@ from modelbump.bump.rewrite import (
 )
 
 __all__ = [
+    "DEFAULT_WITHIN",
     "EVIDENCE_DIR",
     "SKIP_HINTS",
+    "BranchExists",
     "BumpError",
     "BumpPlan",
+    "DueModel",
     "Edit",
     "Evidence",
     "FileChange",
@@ -35,6 +47,8 @@ __all__ = [
     "check_env_name",
     "check_model_id",
     "check_repo",
+    "due_line",
+    "due_models",
     "load_evidence",
     "old_forms",
     "open_pr",

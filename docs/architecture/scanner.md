@@ -122,6 +122,9 @@ jobs:
 | `skip-comments` | `false` | Leave out IDs that only describe a model (comments, docstrings, sentences, price tables) |
 | `skip-tests` | `false` | Leave out test files and test folders |
 | `upload-sarif` | `true` | Upload the findings to code scanning (needs `security-events: write`; private repositories also need GitHub Advanced Security) |
+| `open-prs` | `false` | `true` opens one bump pull request per due model, `dry-run` lists them ([Bump](bump.md#every-due-model-on-a-schedule)) |
+| `within` | `90` | With `open-prs`: bump models that shut down within this many days |
+| `github-token` | `github.token` | Token `gh` uses to open the pull requests |
 
 The findings appear in the Security tab and on pull request lines, and the text report appears in the job summary.
 

@@ -21,6 +21,7 @@ from modelbump.bump import (
     pr_title,
 )
 from modelbump.registry import load_registry
+from tests.bump.conftest import FakeGh, git
 
 OLD = "claude-3-haiku-20240307"
 NEW = "claude-haiku-4-5-20251001"
@@ -156,48 +157,6 @@ def test_why_line(tmp_path: Path, old: str, line: str) -> None:
     (tmp_path / "app.py").write_text(f'M = "{old}"\n')
     plan = plan_bump(tmp_path, load_registry(), old, "gpt-9")
     assert pr_body(plan, None, load_registry(), TODAY).splitlines()[2] == line
-
-
-def git(cwd: Path, *args: str) -> str:
-    done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
-    return done.stdout.strip()
-
-
-@pytest.fixture
-def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    for key in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
-        monkeypatch.setenv(key, "Test")
-    for key in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
-        monkeypatch.setenv(key, "test@example.com")
-    remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "--quiet", "--bare", str(remote))
-    app = tmp_path / "app"
-    app.mkdir()
-    git(app, "init", "--quiet", "--initial-branch", "main")
-    (app / "app.py").write_text(f'MODEL = "{OLD}"\n')
-    git(app, "add", "app.py")
-    git(app, "commit", "--quiet", "--message", "init")
-    git(app, "remote", "add", "origin", str(remote))
-    git(app, "push", "--quiet", "origin", "main")
-    return app
-
-
-class FakeGh:
-    """Runs git for real; answers gh like the GitHub CLI would."""
-
-    def __init__(self) -> None:
-        self.calls: list[list[str]] = []
-        self.body = ""
-
-    def __call__(self, args: Sequence[str], cwd: Path) -> "subprocess.CompletedProcess[str]":
-        args = list(args)
-        if args[0] != "gh":
-            return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
-        self.calls.append(args)
-        if "--body-file" in args:
-            self.body = Path(args[args.index("--body-file") + 1]).read_text()
-        out = "gh version 2.0\n" if args[1] == "--version" else "https://github.com/o/r/pull/7\n"
-        return subprocess.CompletedProcess(args, 0, out, "")
 
 
 def test_open_pr_commits_pushes_and_switches_back(repo: Path) -> None:

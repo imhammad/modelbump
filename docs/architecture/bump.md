@@ -89,6 +89,43 @@ modelbump bump claude-3-haiku-20240307 --suite suite.json --report test.json --p
 
 Why: [ADR 0071](../adr/0071-pull-request-with-the-evidence-report.md).
 
+## Every due model, on a schedule
+
+```bash
+modelbump bump-all --within 90            # list what would be bumped
+modelbump bump-all --within 90 --open-pr  # one pull request per model
+```
+
+A model is due when the code uses it, it is retired or shuts down within `--within` days, and the registry suggests a replacement that is not retired. A model whose branch `modelbump/OLD-to-NEW` already exists is skipped, so a scheduled run never opens a second pull request for it.
+
+In GitHub Actions:
+
+```yaml
+name: ModelBump
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write        # push the bump branch
+  pull-requests: write   # open the pull request
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: imhammad/modelbump@main   # pin to a release tag
+        with:
+          open-prs: "true"
+          upload-sarif: "false"
+```
+
+The repository must allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Pull requests opened with the default token do not start other workflows; pass a fine-grained token as `github-token` to run CI on them.
+
+Why: [ADR 0072](../adr/0072-scheduled-bump-pull-requests.md).
+
 ## Code
 
 | Module | What it does |
@@ -98,3 +135,4 @@ Why: [ADR 0071](../adr/0071-pull-request-with-the-evidence-report.md).
 | `modelbump.bump.evidence` | `load_evidence` (read and check the suite, test report, repair report or patch file), `Evidence.files` |
 | `modelbump.bump.prompts` | `literals` (plain string literals of a Python file), `plan_repair` (where each part of a patch goes, or why not), `apply_repair`, `render` |
 | `modelbump.bump.pr` | `pr_body`, `pr_title`, `branch_name`, `check_repo` (gh, clean tree, new branch), `open_pr` (commit, push, `gh pr create`, switch back) |
+| `modelbump.bump.due` | `due_models` (models the code uses that are retired or shut down soon, with their replacement or the reason there is none), `due_line` |

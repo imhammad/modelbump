@@ -240,6 +240,10 @@ def _s(count: int, word: str) -> str:
     return word if count == 1 else word + "s"
 
 
+class BranchExists(BumpError):
+    """The bump's branch is already there: its pull request is open, or was not cleaned up."""
+
+
 @dataclass(frozen=True, slots=True)
 class Repo:
     """The git repository a pull request is opened from."""
@@ -261,8 +265,9 @@ def _ok(run: Run, args: Sequence[str], cwd: Path) -> str:
     return done.stdout.strip()
 
 
-def check_repo(root: Path, branch: str, run: Run = _run) -> Repo:
+def check_repo(root: Path, branch: str, run: Run | None = None) -> Repo:
     """Check a pull request can be opened: gh exists, the tree is clean, the branch is new."""
+    run = run or _run
     try:
         has_gh = run(["gh", "--version"], root if root.is_dir() else root.parent).returncode == 0
     except FileNotFoundError:
@@ -280,10 +285,10 @@ def check_repo(root: Path, branch: str, run: Run = _run) -> Repo:
         run(["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], top).returncode
         == 0
     ):
-        raise BumpError(f"branch {branch} already exists; delete it or merge its pull request")
+        raise BranchExists(f"branch {branch} already exists; delete it or merge its pull request")
     remote = run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], top)
     if remote.returncode == 0:
-        raise BumpError(f"branch {branch} is already on origin; is a pull request open for it?")
+        raise BranchExists(f"branch {branch} is already on origin; is a pull request open for it?")
     return Repo(top, current)
 
 
@@ -293,9 +298,10 @@ def open_pr(
     branch: str,
     title: str,
     body: str,
-    run: Run = _run,
+    run: Run | None = None,
 ) -> str:
     """Commit ``paths`` on a new branch, push it, open the pull request, return its URL."""
+    run = run or _run
     files = [path.resolve().relative_to(repo.top.resolve()).as_posix() for path in paths]
     _ok(run, ["git", "switch", "--create", branch], repo.top)
     try:
