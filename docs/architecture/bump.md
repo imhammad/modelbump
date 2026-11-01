@@ -51,9 +51,37 @@ modelbump bump claude-3-haiku-20240307 --env ANTHROPIC_MODEL
 
 Why: [ADR 0069](../adr/0069-move-hard-coded-ids-to-an-environment-variable.md).
 
+## Evidence and repairs
+
+The bump calls no model. Run the test (and the repair) first, then hand their files to the bump:
+
+```bash
+modelbump suite . --output suite.json
+modelbump test suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:4b-instruct \
+  --patch fix.json --format json --output test.json
+modelbump bump claude-3-haiku-20240307 --suite suite.json --report test.json --patch fix.json
+```
+
+```text
+Would change 1 place in 1 file: claude-3-haiku-20240307 -> claude-haiku-4-5-20251001.
+Would repair the prompt of 1 call in the code: support.py:30.
+Would add evidence, tested ollama/qwen2.5:7b -> ollama/qwen3:4b-instruct:
+  .modelbump/suite.json
+  .modelbump/test.json
+  .modelbump/repairs.json
+```
+
+- `--repairs modelbump-repair.json --proposals DIR` takes the accepted patches from `modelbump repair run`; `--patch FILE` takes a patch file instead.
+- A patch goes into the code only where its place is certain: the text to edit, or the call's whole system message, is exactly one plain string literal in the app's Python files. Otherwise it is listed under "Apply by hand" with the reason, and stays in `.modelbump/repairs.json`.
+- `.modelbump/` holds `suite.json`, `test.json`, `repair.json` and `repairs.json`, copied as they were run. The scanner skips this folder.
+
+Why: [ADR 0070](../adr/0070-bump-adds-evidence-and-writes-repairs-into-the-code.md).
+
 ## Code
 
 | Module | What it does |
 |--------|--------------|
 | `modelbump.bump.rewrite` | `plan_bump` (scan, keep the old model's findings, build each file's new text), `apply_plan` (write, refusing files that changed), `plan_diff`, `skipped_lines` |
 | `modelbump.bump.config` | `movable` (can this literal read an environment variable), `import_position`, `env_file_text`, `suggested_env_name` |
+| `modelbump.bump.evidence` | `load_evidence` (read and check the suite, test report, repair report or patch file), `Evidence.files` |
+| `modelbump.bump.prompts` | `literals` (plain string literals of a Python file), `plan_repair` (where each part of a patch goes, or why not), `apply_repair`, `render` |

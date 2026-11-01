@@ -13,9 +13,11 @@ import typer
 
 from modelbump import __version__
 from modelbump.bump import (
+    EVIDENCE_DIR,
     BumpError,
     BumpPlan,
     apply_plan,
+    load_evidence,
     plan_bump,
     plan_diff,
     skipped_lines,
@@ -36,7 +38,7 @@ from modelbump.oracles.probes import (
 )
 from modelbump.oracles.probes import DEFAULT_SEED as DEFAULT_PROBE_SEED
 from modelbump.oracles.report import oracles_summary, render_oracles_json, render_oracles_text
-from modelbump.registry import Status, load_registry
+from modelbump.registry import Registry, Status, load_registry
 from modelbump.repair import (
     DEFAULT_CANDIDATES,
     DEFAULT_PROPOSER,
@@ -274,6 +276,48 @@ def bump(
             "new model as the default (Python code; also added to .env.example).",
         ),
     ] = None,
+    suite_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--suite",
+            help="The suite that was tested (`modelbump suite`), added as evidence.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
+    report: Annotated[
+        Path | None,
+        typer.Option(
+            help="The JSON test report (`modelbump test --format json`), added as evidence.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
+    repairs: Annotated[
+        Path | None,
+        typer.Option(
+            help="The repair report (`modelbump repair run`): accepted repairs go into the code.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
+    proposals: Annotated[
+        Path | None,
+        typer.Option(
+            help="The folder from `modelbump repair propose`, holding the accepted patches.",
+            exists=True,
+            file_okay=False,
+        ),
+    ] = None,
+    patch: Annotated[
+        Path | None,
+        typer.Option(
+            help="A patch file to write into the code instead of --repairs, e.g. one tested "
+            "with `modelbump test --patch`.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ] = None,
     exclude: Annotated[
         list[str] | None,
         typer.Option(help="Skip paths matching this pattern, e.g. 'tests'. Repeat for more."),
@@ -304,16 +348,33 @@ def bump(
     if target.severity in (Severity.RETIRING_SOON, Severity.DEPRECATED):
         typer.echo(f"Warning: {new} is deprecated too and shuts down on {target.shutdown}.")
     try:
+        evidence = load_evidence(suite_file, report, repairs, proposals, patch)
         plan = plan_bump(
-            path, registry, old, new, exclude=exclude or (), include_docs=include_docs, env=env
+            path,
+            registry,
+            old,
+            new,
+            exclude=exclude or (),
+            include_docs=include_docs,
+            env=env,
+            evidence=evidence,
         )
         if write:
             apply_plan(path, plan)
-    except BumpError as error:
-        typer.echo(f"Error: {error}.", err=True)
+    except (BumpError, ValueError) as error:
+        typer.echo(f"Error: {str(error).rstrip('.')}.", err=True)
         raise typer.Exit(code=2) from error
+    _print_bump(plan, old, new, write, env, registry)
+
+
+def _print_bump(
+    plan: BumpPlan, old: str, new: str, write: bool, env: str | None, registry: Registry
+) -> None:
     places = len(plan.edits)
     files = sum(1 for change in plan.changes if change.edits)
+    code_changed = any(not change.evidence for change in plan.changes)
+    if code_changed and not write:
+        typer.echo(plan_diff(plan), nl=False)
     if places == 0:
         scanned = plan.files_scanned
         typer.echo(
@@ -321,13 +382,31 @@ def bump(
             f"(scanned {scanned} {_plural(scanned, 'file')})."
         )
     else:
-        if not write:
-            typer.echo(plan_diff(plan), nl=False)
         verb = "Changed" if write else "Would change"
         typer.echo(
             f"{verb} {places} {_plural(places, 'place')} in {files} {_plural(files, 'file')}: "
             f"{old} -> {new}." + (_moved_note(plan) if plan.moved else "")
         )
+    if plan.repaired:
+        verb = "Repaired" if write else "Would repair"
+        count = len(plan.repaired)
+        typer.echo(
+            f"{verb} the prompt of {count} {_plural(count, 'call')} in the code: "
+            f"{', '.join(plan.repaired)}."
+        )
+    if plan.by_hand:
+        typer.echo(
+            f"Apply by hand ({len(plan.by_hand)}); the patch is in {EVIDENCE_DIR}/repairs.json:"
+        )
+        for call, reason in plan.by_hand:
+            typer.echo(f"  {call}  ({reason})")
+    evidence = [change for change in plan.changes if change.evidence]
+    if evidence:
+        verb = "Added" if write else "Would add"
+        tested = f", tested {plan.tested[0]} -> {plan.tested[1]}" if plan.tested else ""
+        typer.echo(f"{verb} evidence{tested}:")
+        for change in evidence:
+            typer.echo(f"  {change.path}" + ("" if change.created else "  (updated)"))
     if plan.skipped:
         typer.echo(f"Left alone, check by hand ({len(plan.skipped)}):")
         for line in skipped_lines(plan):
@@ -339,7 +418,7 @@ def bump(
             f"Add --env {suggested_env_name(old, registry)} to read it from the environment, "
             "so the next change is one setting."
         )
-    if places and not write:
+    if plan.changes and not write:
         typer.echo("Nothing was written. Run again with --write to change the files.")
 
 

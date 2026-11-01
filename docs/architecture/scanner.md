@@ -127,7 +127,7 @@ The findings appear in the Security tab and on pull request lines, and the text 
 
 ## Files scanned
 
-Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, `.ex`, `.exs`, `.html`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, `env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned. `--exclude PATTERN` (repeatable) skips more: `tests` drops that folder, `*.ipynb` drops every notebook, and `*/fixtures` drops fixtures folders at any depth.
+Code (`.py`, `.ipynb`, `.js`, `.ts`, `.tsx`, `.go`, `.java`, `.ex`, `.exs`, `.html`, ...) and config (`.json`, `.yaml`, `.toml`, `.ini`, `.env`, `.env.example`, `env.example`, ...). Docs, lock files, tool folders (`.git`, `node_modules`, `.venv`, ...), ModelBump's own `.modelbump` evidence folder, symbolic links, files over 1 MB and binary files are skipped. A file named directly on the command line is always scanned. `--exclude PATTERN` (repeatable) skips more: `tests` drops that folder, `*.ipynb` drops every notebook, and `*/fixtures` drops fixtures folders at any depth.
 
 ## Not yet
 

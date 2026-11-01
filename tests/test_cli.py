@@ -1619,3 +1619,53 @@ def test_bump_refuses_a_bad_env_name(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "not an environment variable name" in result.stderr
+
+
+def test_bump_adds_evidence_and_writes_repairs(tmp_path: Path) -> None:
+    import shutil
+
+    app_dir = tmp_path / "app"
+    shutil.copytree(DEMO, app_dir)
+    suite_file = tmp_path / "suite.json"
+    assert runner.invoke(app, ["suite", str(app_dir), "--output", str(suite_file)]).exit_code == 0
+    report = tmp_path / "test.json"
+    report.write_text(json.dumps({"version": 1, "old": "ollama/a", "new": "ollama/b", "cases": []}))
+    fix = tmp_path / "fix.json"
+    fix.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "patches": [
+                    {"call": "support.py:30", "add_system": "No numbered lists."},
+                    {"call": "support.py:24", "add_system": "Label only."},
+                ],
+            }
+        )
+    )
+    args = ["bump", "gpt-4o-mini", str(app_dir), "--to", "gpt-6-sol", "--suite", str(suite_file)]
+    args += ["--report", str(report), "--patch", str(fix)]
+    result = runner.invoke(app, [*args, "--write"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines()[:9] == [
+        "Changed 2 places in 2 files: gpt-4o-mini -> gpt-6-sol.",
+        "Repaired the prompt of 1 call in the code: support.py:30.",
+        "Apply by hand (1); the patch is in .modelbump/repairs.json:",
+        "  support.py:24  (the system message is built at runtime)",
+        "Added evidence, tested ollama/a -> ollama/b:",
+        "  .modelbump/suite.json",
+        "  .modelbump/test.json",
+        "  .modelbump/repairs.json",
+        "Tip: 1 place hard-codes the model. Add --env LLM_MODEL to read it from the "
+        "environment, so the next change is one setting.",
+    ]
+    assert "No numbered lists." in (app_dir / "support.py").read_text()
+
+
+def test_bump_report_needs_a_suite(tmp_path: Path) -> None:
+    report = tmp_path / "test.json"
+    report.write_text("{}")
+    result = runner.invoke(
+        app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--report", str(report)]
+    )
+    assert result.exit_code == 2
+    assert "need --suite" in result.stderr

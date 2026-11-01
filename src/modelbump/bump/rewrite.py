@@ -38,9 +38,12 @@ from modelbump.bump.config import (
     movable,
     newline_of,
 )
+from modelbump.bump.evidence import Evidence
+from modelbump.bump.prompts import Literal, apply_repair, literals, plan_repair
 from modelbump.registry import Registry
-from modelbump.scanner import Context, Finding, scan_path
+from modelbump.scanner import Context, Finding, iter_source_files, scan_path
 from modelbump.scanner.context import file_kind
+from modelbump.scanner.files import is_test_path
 
 # A model ID as people write it in code. Checked on the new ID so a bump can
 # never write quotes, spaces or code into a file.
@@ -99,7 +102,9 @@ class FileChange:
     after: str
     edits: tuple[Edit, ...]
     created: bool = False
-    """True for a file the bump creates (``.env.example``)."""
+    """True for a file the bump creates (``.env.example``, evidence files)."""
+    evidence: bool = False
+    """True for a file in ``.modelbump/``: listed, not shown in the diff."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +126,12 @@ class BumpPlan:
     files_scanned: int
     env: str | None = None
     """The environment variable hard-coded IDs were moved to, if any."""
+    repaired: tuple[str, ...] = ()
+    """Calls whose accepted repair was written into the code."""
+    by_hand: tuple[tuple[str, str], ...] = ()
+    """``(call, reason)`` for accepted repairs that must be applied by hand."""
+    tested: tuple[str, str] | None = None
+    """The two models the test report compared."""
 
     @property
     def edits(self) -> tuple[Edit, ...]:
@@ -161,12 +172,17 @@ def plan_bump(
     exclude: Sequence[str] = (),
     include_docs: bool = False,
     env: str | None = None,
+    evidence: Evidence | None = None,
 ) -> BumpPlan:
     """Plan the change from ``old`` to ``new`` under ``root`` (a folder or a file).
 
     With ``env``, whole string literals in Python read that environment
     variable instead, with ``new`` as the default, and ``.env.example`` in the
     root folder gets ``ENV=new`` when it does not set the variable yet.
+
+    With ``evidence``, accepted repairs are written into the app's Python
+    source where the place is certain, and the evidence files are added to
+    ``.modelbump/`` (ADR 0070).
     """
     check_model_id(old)
     check_model_id(new)
@@ -208,8 +224,88 @@ def plan_bump(
     moved = any(edit.moved for change in changes for edit in change.edits)
     if env is not None and moved and root.is_dir():
         changes = _with_env_file(base, changes, env, new)
+    repaired: list[str] = []
+    by_hand: list[tuple[str, str]] = []
+    if evidence is not None and evidence.accepted:
+        repaired, by_hand = _with_repairs(root, base, changes, evidence, exclude)
+    if evidence is not None:
+        _with_evidence(base, changes, evidence)
     skipped.sort(key=lambda s: (s.finding.path, s.finding.line, s.finding.column))
-    return BumpPlan(old, new, tuple(changes), tuple(skipped), result.files_scanned, env)
+    return BumpPlan(
+        old,
+        new,
+        tuple(changes),
+        tuple(skipped),
+        result.files_scanned,
+        env,
+        tuple(repaired),
+        tuple(by_hand),
+        evidence.tested if evidence is not None else None,
+    )
+
+
+def _with_repairs(
+    root: Path,
+    base: Path,
+    changes: list[FileChange],
+    evidence: Evidence,
+    exclude: Sequence[str],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Write each accepted repair into the source, or say why it must be done by hand."""
+    assert evidence.suite is not None
+    paths = [root] if root.is_file() else list(iter_source_files(root, exclude))
+    texts: dict[str, str] = {}
+    start: dict[str, str] = {}
+    for path in paths:
+        rel = path.relative_to(base).as_posix()
+        if file_kind(rel) != "python" or is_test_path(rel):
+            continue
+        existing = next((c for c in changes if c.path == rel), None)
+        try:
+            texts[rel] = existing.after if existing else path.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        start[rel] = texts[rel]
+    found: dict[str, list[Literal]] = {rel: literals(rel, text) for rel, text in texts.items()}
+    repaired: list[str] = []
+    by_hand: list[tuple[str, str]] = []
+    for patch in evidence.accepted:
+        repair = plan_repair(patch, evidence.suite, found)
+        if repair.reason is not None:
+            by_hand.append((patch.call, repair.reason))
+            continue
+        touched = {lit.path for lit, _ in repair.replacements}
+        try:
+            new_texts = {rel: apply_repair(texts[rel], rel, repair) for rel in touched}
+        except ValueError as error:
+            by_hand.append((patch.call, str(error)))
+            continue
+        for rel, text in new_texts.items():
+            texts[rel] = text
+            found[rel] = literals(rel, text)
+        repaired.append(patch.call)
+    for rel, text in texts.items():
+        if text == start[rel]:
+            continue
+        index = next((i for i, c in enumerate(changes) if c.path == rel), None)
+        if index is not None:
+            change = changes[index]
+            changes[index] = FileChange(rel, change.before, text, change.edits, change.created)
+        else:
+            changes.append(FileChange(rel, start[rel], text, ()))
+    return repaired, by_hand
+
+
+def _with_evidence(base: Path, changes: list[FileChange], evidence: Evidence) -> None:
+    """Add or update each evidence file in ``.modelbump/``."""
+    for rel, text in evidence.files().items():
+        path = base / rel
+        before = path.read_bytes().decode("utf-8") if path.is_file() else None
+        if before == text:
+            continue
+        changes.append(
+            FileChange(rel, before or "", text, (), created=before is None, evidence=True)
+        )
 
 
 def _skip_reason(finding: Finding, forms: frozenset[str], include_docs: bool) -> SkipReason | None:
@@ -318,14 +414,18 @@ def apply_plan(root: Path, plan: BumpPlan) -> None:
         elif path.read_bytes().decode("utf-8") != change.before:
             raise BumpError(f"{change.path} changed since the bump was planned; run it again")
     for change in plan.changes:
+        path = base / change.path
+        path.parent.mkdir(parents=True, exist_ok=True)
         # Bytes keep the file's own line endings (\r\n stays \r\n).
-        (base / change.path).write_bytes(change.after.encode("utf-8"))
+        path.write_bytes(change.after.encode("utf-8"))
 
 
 def plan_diff(plan: BumpPlan) -> str:
     """A unified diff of every change, as ``git diff`` would show it."""
     parts: list[str] = []
     for change in plan.changes:
+        if change.evidence:
+            continue
         parts.extend(
             difflib.unified_diff(
                 change.before.splitlines(keepends=True),

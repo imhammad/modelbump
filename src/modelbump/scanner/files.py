@@ -27,6 +27,8 @@ SKIP_DIRS = frozenset(
         ".next",
         ".nuxt",
         "coverage",
+        # ModelBump's own evidence (ADR 0070): it names the old model on purpose.
+        ".modelbump",
     }
 )
 

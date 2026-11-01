@@ -75,3 +75,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0067](0067-instruct-model-and-salvaged-proposals.md) | Use Qwen 3 4B Instruct for the second migration, and keep a proposal's added instruction when its edits do not fit | Accepted |
 | [0068](0068-bump-rewrites-ids-the-scanner-found.md) | `modelbump bump` changes the model ID only where the scanner found it used, and shows a diff first | Accepted |
 | [0069](0069-move-hard-coded-ids-to-an-environment-variable.md) | `bump --env NAME` moves hard-coded model IDs in Python to an environment variable, with the new model as the default | Accepted |
+| [0070](0070-bump-adds-evidence-and-writes-repairs-into-the-code.md) | The bump takes the test and repair results as files, adds them to `.modelbump/`, and writes a repair into the code only where its place is certain | Accepted |
