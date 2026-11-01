@@ -17,9 +17,14 @@ from modelbump.bump import (
     BumpError,
     BumpPlan,
     apply_plan,
+    branch_name,
+    check_repo,
     load_evidence,
+    open_pr,
     plan_bump,
     plan_diff,
+    pr_body,
+    pr_title,
     skipped_lines,
     suggested_env_name,
 )
@@ -329,8 +334,28 @@ def bump(
             help="Check the new model's retirement as if today were this day (YYYY-MM-DD).",
         ),
     ] = None,
+    pr_body_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--pr-body",
+            help="Write the pull request description (the evidence report) to this file.",
+            dir_okay=False,
+        ),
+    ] = None,
+    open_pull_request: Annotated[
+        bool,
+        typer.Option(
+            "--open-pr",
+            help="Write the files, commit them on a new branch, push, and open a pull request "
+            "with gh. Needs a clean git working tree.",
+        ),
+    ] = False,
 ) -> None:
-    """Change a model ID to a new one wherever the code uses it (a dry run by default)."""
+    """Change a model ID to a new one wherever the code uses it (a dry run by default).
+
+    With --open-pr, the change goes to a new branch and a pull request whose
+    description is the evidence report.
+    """
     registry = load_registry()
     day = today.date() if today is not None else date.today()
     new = to
@@ -359,12 +384,36 @@ def bump(
             env=env,
             evidence=evidence,
         )
+        body = pr_body(plan, evidence, registry, day)
+        repo = None
+        if open_pull_request and plan.changes:
+            write = True
+            repo = check_repo(path, branch_name(old, new))
         if write:
             apply_plan(path, plan)
     except (BumpError, ValueError) as error:
         typer.echo(f"Error: {str(error).rstrip('.')}.", err=True)
         raise typer.Exit(code=2) from error
     _print_bump(plan, old, new, write, env, registry)
+    if pr_body_file is not None:
+        pr_body_file.write_text(body, encoding="utf-8")
+        typer.echo(f"Wrote the pull request description to {pr_body_file}.")
+    if open_pull_request and not plan.changes:
+        typer.echo("Nothing to change, so no pull request was opened.")
+    if repo is not None:
+        base = path.parent if path.is_file() else path
+        paths = [base / change.path for change in plan.changes]
+        try:
+            url = open_pr(repo, paths, branch_name(old, new), pr_title(plan), body)
+        except BumpError as error:
+            typer.echo(f"Error: {str(error).rstrip('.')}.", err=True)
+            typer.echo(
+                f"The files are changed. You are back on {repo.branch}; "
+                f"the branch {branch_name(old, new)} has what was committed.",
+                err=True,
+            )
+            raise typer.Exit(code=1) from error
+        typer.echo(f"Opened pull request {url} from branch {branch_name(old, new)}.")
 
 
 def _print_bump(

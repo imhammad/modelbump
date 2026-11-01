@@ -1669,3 +1669,30 @@ def test_bump_report_needs_a_suite(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "need --suite" in result.stderr
+
+
+def test_bump_writes_the_pull_request_description(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    body = tmp_path / "body.md"
+    result = runner.invoke(
+        app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--pr-body", str(body)]
+    )
+    assert result.exit_code == 0
+    assert f"Wrote the pull request description to {body}." in result.stdout
+    assert body.read_text().startswith("## Bump `gpt-4o` to `gpt-6-sol`\n")
+    assert (tmp_path / "app.py").read_text() == 'MODEL = "gpt-4o"\n'
+
+
+def test_bump_open_pr_outside_a_git_repository_changes_nothing(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--open-pr"])
+    assert result.exit_code == 2
+    # No gh here, or no git repository: either way it stops before writing.
+    assert "needs the GitHub CLI" in result.stderr or "not a git repository" in result.stderr
+    assert (tmp_path / "app.py").read_text() == 'MODEL = "gpt-4o"\n'
+
+
+def test_bump_open_pr_with_nothing_to_change(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["bump", "gpt-4o", str(tmp_path), "--to", "gpt-6-sol", "--open-pr"])
+    assert result.exit_code == 0
+    assert "Nothing to change, so no pull request was opened." in result.stdout

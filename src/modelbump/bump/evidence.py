@@ -37,6 +37,8 @@ class Evidence:
     """``(old, new)`` as the test report names them, e.g. ``ollama/qwen2.5:7b``."""
     repair_text: str | None = None
     accepted: tuple[PromptPatch, ...] = ()
+    test_data: dict[str, Any] | None = None
+    """The test report, parsed, for the pull request's summary."""
 
     def files(self) -> dict[str, str]:
         """Path in the repository -> text, for every evidence file."""
@@ -76,6 +78,7 @@ def load_evidence(
     suite_text = _text(suite_file)
     test_text = _text(test_file)
     tested = None
+    data: dict[str, Any] | None = None
     if test_file is not None and test_text is not None:
         data = _json(test_file, test_text)
         if data.get("version") != 1 or not isinstance(data.get("cases"), list):
@@ -93,7 +96,7 @@ def load_evidence(
             apply_patches(suite, accepted)
         except PatchError as error:
             raise ValueError(f"{patch_file} does not fit the suite: {error}") from error
-    return Evidence(suite, suite_text, test_text, tested, repair_text, accepted)
+    return Evidence(suite, suite_text, test_text, tested, repair_text, accepted, data)
 
 
 def _accepted(path: Path, text: str, proposals: Path, suite: Suite) -> tuple[PromptPatch, ...]:

@@ -77,6 +77,18 @@ Would add evidence, tested ollama/qwen2.5:7b -> ollama/qwen3:4b-instruct:
 
 Why: [ADR 0070](../adr/0070-bump-adds-evidence-and-writes-repairs-into-the-code.md).
 
+## The pull request
+
+```bash
+modelbump bump claude-3-haiku-20240307 --suite suite.json --report test.json --patch fix.json --open-pr
+```
+
+- `--open-pr` checks that `gh` is installed, the working tree is clean and the branch `modelbump/OLD-to-NEW` is new. It then writes the files, commits them on that branch, pushes it, opens the pull request with `gh pr create`, and switches back to the branch you were on.
+- The description is the evidence report: why the model changes, what changed, what to check by hand, and the test result per case with the command that runs it again. It holds verdicts and scores, never prompts or answers; those are in `.modelbump/test.json`.
+- `--pr-body FILE` writes the description to a file, with no git at all.
+
+Why: [ADR 0071](../adr/0071-pull-request-with-the-evidence-report.md).
+
 ## Code
 
 | Module | What it does |
@@ -85,3 +97,4 @@ Why: [ADR 0070](../adr/0070-bump-adds-evidence-and-writes-repairs-into-the-code.
 | `modelbump.bump.config` | `movable` (can this literal read an environment variable), `import_position`, `env_file_text`, `suggested_env_name` |
 | `modelbump.bump.evidence` | `load_evidence` (read and check the suite, test report, repair report or patch file), `Evidence.files` |
 | `modelbump.bump.prompts` | `literals` (plain string literals of a Python file), `plan_repair` (where each part of a patch goes, or why not), `apply_repair`, `render` |
+| `modelbump.bump.pr` | `pr_body`, `pr_title`, `branch_name`, `check_repo` (gh, clean tree, new branch), `open_pr` (commit, push, `gh pr create`, switch back) |
