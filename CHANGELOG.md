@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0](https://github.com/imhammad/modelbump/compare/v0.5.0...v1.0.0) (2026-11-02)
+
+
+### Features
+
+* **bump:** add test evidence and write accepted repairs into the code ([#97](https://github.com/imhammad/modelbump/issues/97)) ([fc8e505](https://github.com/imhammad/modelbump/commit/fc8e5052356d20461422ecdc40ee12718d0dc985))
+* **bump:** change a model ID where the code uses it ([#94](https://github.com/imhammad/modelbump/issues/94)) ([f039987](https://github.com/imhammad/modelbump/commit/f039987c5bc278ad517e5be040045cd6818f8842))
+* **bump:** move hard-coded model IDs to an environment variable ([#96](https://github.com/imhammad/modelbump/issues/96)) ([39cda2a](https://github.com/imhammad/modelbump/commit/39cda2a638c94d87367ba3a4ad38689682614bc4))
+* **bump:** open bump pull requests on a schedule ([#99](https://github.com/imhammad/modelbump/issues/99)) ([78bfec6](https://github.com/imhammad/modelbump/commit/78bfec6eba9df4e3830a47928a7cc432ea3793aa))
+* **bump:** open the pull request with the evidence report ([#98](https://github.com/imhammad/modelbump/issues/98)) ([6294dd7](https://github.com/imhammad/modelbump/commit/6294dd7e9e38a2df48856d8e3978b08a3bc1ec4b))
+* **bump:** redact secrets from the evidence and scan large repositories faster ([#100](https://github.com/imhammad/modelbump/issues/100)) ([8b41271](https://github.com/imhammad/modelbump/commit/8b412710c8678701a43cfe036ebb0163dcba7e04))
+* user guide, the 1.x stability promise and the v1 Action tag ([#101](https://github.com/imhammad/modelbump/issues/101)) ([81d44a8](https://github.com/imhammad/modelbump/commit/81d44a8491e0c70e54ab84b7891c77d4fcdb4907))
+
 ## [0.5.0](https://github.com/imhammad/modelbump/compare/v0.4.0...v0.5.0) (2026-10-31)
 
 
