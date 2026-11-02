@@ -71,7 +71,7 @@ Would add evidence, tested ollama/qwen2.5:7b -> ollama/qwen3:4b-instruct:
   .modelbump/repairs.json
 ```
 
-- `--repairs modelbump-repair.json --proposals DIR` takes the accepted patches from `modelbump repair run`; `--patch FILE` takes a patch file instead.
+- `--repairs REPORT --proposals DIR` takes the accepted patches from `modelbump repair run --report REPORT`; `--patch FILE` takes a patch file instead, such as `modelbump-repair.json`.
 - A patch goes into the code only where its place is certain: the text to edit, or the call's whole system message, is exactly one plain string literal in the app's Python files. Otherwise it is listed under "Apply by hand" with the reason, and stays in `.modelbump/repairs.json`.
 - `.modelbump/` holds `suite.json`, `test.json`, `repair.json` and `repairs.json`, copied as they were run. The scanner skips this folder.
 
@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: imhammad/modelbump@main   # pin to a release tag
+      - uses: imhammad/modelbump@v1
         with:
           open-prs: "true"
           upload-sarif: "false"

@@ -39,3 +39,4 @@ What we'd do differently from now on.
 | [004](004-popular-ids-take-days.md) | Popular model IDs would take days to mine | Research mining |
 | [005](005-first-pass-labels.md) | The hand labels needed checking too | Research validation |
 | [006](006-into-counted-as-yes.md) | A model switch is not always a migration away | Research validation |
+| [007](007-upper-case-verdicts.md) | The pull request said nothing regressed, under a table of regressions | Bump / pull request |

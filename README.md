@@ -1,6 +1,6 @@
 # ModelBump
 
-**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, and tests the replacement on your app's own prompts. Later versions will also repair prompts that regress and open the upgrade pull request for you.
+**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, tests the replacement on your app's own prompts, repairs prompts that got worse, and opens the upgrade pull request with the test results as evidence.
 
 [![PyPI](https://img.shields.io/pypi/v/modelbump)](https://pypi.org/project/modelbump/)
 [![CI](https://github.com/imhammad/modelbump/actions/workflows/ci.yml/badge.svg)](https://github.com/imhammad/modelbump/actions/workflows/ci.yml)
@@ -9,7 +9,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/)
 
-> **Status:** `v0.5.0` ships the first three stages. **Scan** finds retiring models, as a command-line tool and a GitHub Action. **Test** builds a regression suite from your app's LLM calls and compares the old and new model on it (`modelbump suite`, `modelbump test`). **Repair** proposes prompt fixes for the cases that regressed and accepts one only if fresh answers show nothing got worse (`modelbump repair`). The upgrade pull request is still being built; see the [roadmap](#roadmap).
+> **Status:** `v1.0.0`, every stage is out: **scan**, **test**, **repair** and **bump**. The command line, the GitHub Action and the file formats are stable within 1.x ([what that covers](https://imhammad.github.io/modelbump/guide/python-api/)). New here? Follow the [tutorial](https://imhammad.github.io/modelbump/guide/tutorial/): one app, from a retired model to a pull request, with free local models.
 
 ## The problem
 
@@ -70,13 +70,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: imhammad/modelbump@v0.1.0
+      - uses: imhammad/modelbump@v1
         with:
           fail-within: "30"
           skip-comments: "true"
 ```
 
-All inputs are listed in the [scanner documentation](https://imhammad.github.io/modelbump/architecture/scanner/).
+With `open-prs: "true"` and `contents: write` plus `pull-requests: write` permissions, the same Action opens one bump pull request per due model on a schedule, like Dependabot. All inputs are in the [Action guide](https://imhammad.github.io/modelbump/guide/action/).
 
 ## How well the scanner works
 
@@ -132,6 +132,21 @@ $ modelbump test suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-t
 
 On 6 real regressions in two model migrations, it repaired 2. A plain "rewrite this prompt for the new model" repaired none. The safety check stopped two fixes that looked good at first: one failed on fresh answers, and one broke another input ([results](https://imhammad.github.io/modelbump/research/repair/), [how repair works](https://imhammad.github.io/modelbump/architecture/repair/)).
 
+## Open the upgrade pull request
+
+`modelbump bump` changes the model wherever the code uses it, writes accepted prompt repairs into the code, adds the test as evidence in `.modelbump/` (with keys and email addresses redacted), and opens the pull request:
+
+```console
+$ modelbump bump claude-3-haiku-20240307 --suite suite.json --report test.json --repairs repair.json --proposals modelbump-proposals --open-pr
+Using the replacement the registry suggests: claude-haiku-4-5-20251001.
+Changed 1 place in 1 file: claude-3-haiku-20240307 -> claude-haiku-4-5-20251001.
+Repaired the prompt of 1 call in the code: support.py:30.
+...
+Opened pull request https://github.com/you/app/pull/12 from branch modelbump/claude-3-haiku-20240307-to-claude-haiku-4-5-20251001.
+```
+
+It is a dry run with a diff unless you add `--write` or `--open-pr`. Comments, price tables and Bedrock or Vertex forms are listed for you to check, never guessed. `--env ANTHROPIC_MODEL` makes the code read the model from an environment variable. `modelbump bump-all` bumps every due model, one pull request each ([how bump works](https://imhammad.github.io/modelbump/architecture/bump/)).
+
 ## The plan
 
 | Stage | What it does | Status |
@@ -140,7 +155,13 @@ On 6 real regressions in two model migrations, it repaired 2. A plain "rewrite t
 | **Test** | Builds an app-specific regression suite from your prompts and tests, with an oracle per output type and a calibrated LLM judge for free text. | Available (`v0.4.0`) |
 | **Compare** | Runs old vs. new model with sequential statistical tests, separating real regressions from normal LLM randomness, within a cost budget. | Available (`v0.4.0`, `modelbump test`) |
 | **Repair** | Searches for prompt edits that fix regressions without breaking anything that already worked. | Available (`v0.5.0`, `modelbump repair`) |
-| **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. | Planned |
+| **Bump** | Opens a ready-to-review PR with the new model, repaired prompts, the regression suite, and an evidence report. | Available (`v1.0.0`, `modelbump bump`) |
+
+## Documentation
+
+- [Tutorial](https://imhammad.github.io/modelbump/guide/tutorial/): one app, end to end, with free local models
+- [How it works](https://imhammad.github.io/modelbump/guide/how-it-works/), [GitHub Action](https://imhammad.github.io/modelbump/guide/action/), [command reference](https://imhammad.github.io/modelbump/guide/cli/), [FAQ](https://imhammad.github.io/modelbump/guide/faq/)
+- [Architecture](https://imhammad.github.io/modelbump/architecture/) and the [decision records](https://imhammad.github.io/modelbump/adr/) behind every choice
 
 ## Development
 
@@ -163,7 +184,7 @@ uv run pytest
 - [x] **Phase 4:** Statistical comparison engine (`v0.3.0`)
 - [x] **Phase 5:** Regression suite synthesis + LLM-judge calibration (`v0.4.0`)
 - [x] **Phase 6:** Prompt repair (`v0.5.0`)
-- [ ] **Phase 7:** End-to-end `modelbump bump` + `v1.0.0`
+- [x] **Phase 7:** End-to-end `modelbump bump` + `v1.0.0`
 
 ## Research
 

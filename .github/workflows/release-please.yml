@@ -84,3 +84,27 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  major-tag:
+    name: Move the major version tag
+    needs: [release-please, publish]
+    runs-on: ubuntu-latest
+    # `uses: imhammad/modelbump@v1` follows the latest 1.x release, the way
+    # GitHub's own actions do (ADR 0074). Moved only after PyPI has the release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - name: Point the major tag at this release
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          major="${TAG%%.*}"
+          case "$major" in
+            v0) echo "No major tag before v1."; exit 0 ;;
+          esac
+          git tag --force "$major" HEAD
+          git push --force origin "refs/tags/$major"
+          echo "Moved $major to $TAG."

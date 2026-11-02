@@ -2,8 +2,8 @@
 
 The evidence in ``.modelbump/`` holds every prompt, every answer and every
 error message of the test run. A prompt can quote a document with an email
-address in it, an answer can repeat it, and an error message can carry a key:
-Google's API puts the key in the request URL. The bump commits these files,
+address in it, an answer can repeat it, and an error message a server sends
+back can quote a key. The bump commits these files,
 so each one is scanned first and each match is replaced with
 ``[REDACTED:kind]``.
 

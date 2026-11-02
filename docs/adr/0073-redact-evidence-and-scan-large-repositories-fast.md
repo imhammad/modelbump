@@ -11,7 +11,7 @@ Before v1.0.0, ModelBump had a hardening pass on two risks.
 
 - a prompt that quotes a document, which the answers then repeat;
 - an answer that invents or repeats an email address;
-- an error message that carries a key. Google's Gemini API puts the key in the request URL, and an HTTP error quotes the URL.
+- an error message that quotes a key. ModelBump's runner sends keys in a header, never in a URL, but a server or proxy can still echo one back, and other tools that write these reports may put keys in URLs (Google's native API does).
 
 The pull request description also shows each error message in its table ([ADR 0071](0071-pull-request-with-the-evidence-report.md)), so a key could reach the description too.
 

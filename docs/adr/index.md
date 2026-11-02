@@ -79,3 +79,4 @@ Format: [Michael Nygard's ADR template](https://cognitect.com/blog/2011/11/15/do
 | [0071](0071-pull-request-with-the-evidence-report.md) | `bump --open-pr` opens the pull request with plain git and gh, and its description is the evidence report, with verdicts but no answers | Accepted |
 | [0072](0072-scheduled-bump-pull-requests.md) | `bump-all` and the Action's `open-prs` input open one pull request per due model on a schedule, with least privilege and no duplicates | Accepted |
 | [0073](0073-redact-evidence-and-scan-large-repositories-fast.md) | Redact secrets and email addresses from the evidence, and scan large repositories fast | Accepted |
+| [0074](0074-what-v1-keeps-stable.md) | What v1.0.0 keeps stable, a moving `v1` tag for the Action, and a generated command reference | Accepted |

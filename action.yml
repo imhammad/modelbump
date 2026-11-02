@@ -1,6 +1,6 @@
 # The ModelBump GitHub Action (ADR 0026). Use it from another repository:
 #
-#   - uses: imhammad/modelbump@v0.1.0
+#   - uses: imhammad/modelbump@v1
 #     with:
 #       fail-within: "30"
 #

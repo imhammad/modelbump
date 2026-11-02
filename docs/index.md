@@ -1,35 +1,23 @@
 # ModelBump
 
-**Dependabot for LLM models.** ModelBump finds the AI models your code depends on and warns you before a provider retires them. Later versions will also test the old model against its replacement, repair prompts that regress, and open the upgrade pull request for you.
+**Dependabot for LLM models.** ModelBump finds the AI models your code depends on, warns you before a provider retires them, tests the replacement on your app's own prompts, repairs prompts that got worse, and opens the upgrade pull request for you.
 
-!!! note "v0.5.0: scan, test the new model on your own prompts, and repair what regressed"
-    The first stage, **Scan**, is out as a command-line tool and a GitHub Action:
+!!! note "v1.0.0: scan, test, repair and bump"
+    ModelBump finds the models your code uses and warns before they are retired. It tests the replacement on your app's own prompts, repairs prompts that got worse, and opens the pull request with the evidence:
 
     ```bash
     pip install modelbump
     modelbump scan .
+    modelbump bump claude-3-haiku-20240307 --open-pr
     ```
 
-    The second, **Test**, builds a regression suite from your app's own LLM calls and compares the old and the new model on it, with a calibrated judge for free text:
-
-    ```bash
-    modelbump suite . --generate 2 --output suite.json
-    modelbump test suite.json --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
-    ```
-
-    The third, **Repair**, proposes prompt fixes for the cases that regressed and accepts one only if fresh answers show nothing got worse:
-
-    ```bash
-    modelbump repair propose suite.json report.json
-    modelbump repair run suite.json modelbump-proposals --from ollama/qwen2.5:7b --to ollama/qwen3:8b --to-think none
-    ```
-
-    See [the scanner](architecture/scanner.md), [suites and `modelbump test`](architecture/suite.md), [prompt repair](architecture/repair.md), [the Phase 5 results on 40 real apps](research/suites.md) and [the repair results](research/repair.md). The upgrade pull request is still being built.
+    Start with the [tutorial](guide/tutorial.md): one app, from a retired model to a pull request, with free local models. The [user guide](guide/index.md) has the rest.
 
 ## Where to look
 
 | Section | What you'll find |
 |---------|------------------|
+| [User guide](guide/index.md) | Tutorial, how it works, the GitHub Action, every command, FAQ |
 | [Architecture](architecture/index.md) | How the system is structured and why |
 | [Decisions (ADRs)](adr/index.md) | Every significant technical decision, with the alternatives we rejected |
 | [Engineering challenges](engineering-challenges/index.md) | Problems we hit while building, and how we solved them |
